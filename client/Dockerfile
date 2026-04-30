@@ -1,17 +1,26 @@
 FROM python:3.10-slim
 
-RUN pip install --no-cache-dir watchdog
-
-
-# Install system dependencies for PyQt6
-RUN apt-get update && apt-get install -y \
+RUN apt-get update && apt-get install -y --no-install-recommends \
     libgl1 \
     libegl1 \
     libglib2.0-0 \
+    libdbus-1-3 \
+    libfontconfig1 \
+    libxrender1 \
+    libxi6 \
+    libnss3 \
+    libasound2 \
+    \
+    # Wayland  \
+    libwayland-client0 \
+    libwayland-cursor0 \
+    libwayland-egl1 \
+    libxkbcommon0 \
+    \
+    # X11/XCB dependencias antigas\
     libxcb-xkb1 \
     libx11-xcb1 \
     libxkbcommon-x11-0 \
-    libdbus-1-3 \
     libxcb-cursor0 \
     libxcb-icccm4 \
     libxcb-image0 \
@@ -23,12 +32,9 @@ RUN apt-get update && apt-get install -y \
     libxcb-xinput0 \
     libxcb-randr0 \
     libxcb-util1 \
-    libfontconfig1 \
-    libxrender1 \
-    libxi6 \
-    libnss3 \
-    libasound2 \
     && rm -rf /var/lib/apt/lists/*
+
+RUN pip install --no-cache-dir watchdog
 
 WORKDIR /app
 
