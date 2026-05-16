@@ -33,7 +33,7 @@ Esta é a maneira recomendada, pois garante que todas as dependências do PyQt6 
 Como o cliente possui interface gráfica, você precisa autorizar o Docker a abrir janelas no seu monitor:
 
 ```bash
-xhost +local:docker
+xhost +si:localuser:root
 ```
 
 ### 2. Iniciar o projeto

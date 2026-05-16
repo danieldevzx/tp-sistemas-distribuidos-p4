@@ -11,13 +11,19 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libnss3 \
     libasound2 \
     \
-    # Wayland  \
+    # Wayland \
     libwayland-client0 \
     libwayland-cursor0 \
     libwayland-egl1 \
     libxkbcommon0 \
     \
-    # X11/XCB dependencias antigas\
+    # X11/XCB \
+    libx11-6 \
+    libxext6 \
+    libxrandr2 \
+    libxinerama1 \
+    libxcursor1 \
+    libxtst6 \
     libxcb-xkb1 \
     libx11-xcb1 \
     libxkbcommon-x11-0 \
