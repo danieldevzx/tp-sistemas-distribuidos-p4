@@ -1,4 +1,5 @@
 from modelo.usuario_modelo import UsuarioModelo
+import random
 
 class UsuarioController:
     """
@@ -12,8 +13,8 @@ class UsuarioController:
         
         if not usuario or not senha:
             return False, "Usuário e senha são obrigatórios"
-            
-        return UsuarioModelo.inserir(usuario, senha)
+        
+        return UsuarioModelo.inserir(usuario, senha, random.randint(1, 2))
 
     @staticmethod
     def autenticar(dados_payload):

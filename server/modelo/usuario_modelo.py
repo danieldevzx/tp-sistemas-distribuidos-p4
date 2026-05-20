@@ -8,14 +8,14 @@ class UsuarioModelo:
     """
     
     @staticmethod
-    def inserir(usuario, senha):
+    def inserir(usuario, senha, timeId):
         try:
             conexao = obter_conexao()
             cursor = conexao.cursor()
-            cursor.execute('INSERT INTO usuarios (usuario, senha) VALUES (?, ?)', (usuario, senha))
+            cursor.execute('INSERT INTO usuarios (usuario, senha, timeId) VALUES (?, ?, ?)', (usuario, senha, timeId))
             conexao.commit()
             conexao.close()
-            return True, "Usuário registrado com sucesso"
+            return True, f"Usuário registrado com sucesso | Time: {timeId}"
         except sqlite3.IntegrityError:
             return False, "Nome de usuário já existe"
         except Exception as e:
