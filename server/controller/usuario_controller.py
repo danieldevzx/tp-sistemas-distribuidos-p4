@@ -32,7 +32,7 @@ class UsuarioController:
         resultado = UsuarioModelo.buscar_por_credenciais(usuario, senha)
 
         if resultado:
-            return True, { "mensagem": "Login realizado com sucesso", "usuario": resultado }
+            return True, 
         else:
             return False, "Usuário ou senha inválidos"
     
@@ -40,9 +40,9 @@ class UsuarioController:
     def interagir_campo(dados_payload):
         usuario = dados_payload.get('usuario')
         posicao = dados_payload.get('posicao')
-        if usuario[3] == 1:
-            
-        else:
+
+        return True, "e"
+        #else:
 
 
-        return True, "CAPETA"
+        #return True, "CAPETA"
