@@ -95,14 +95,16 @@ class ControladorCliente(QObject):
 
 
     def clicar_celula(self, linha: int, coluna: int):
-        # Processa clique no campo
         if self.estado.cooldown_ativo:
             self.sinal_acao_erro.emit("Aguarde o cooldown terminar")
             return
-        
-        self._definir_carregamento(True)
-        payload = {"usuario": asdict(self.estado.jogador_local), "linha": linha, "coluna": coluna}
-        self._iniciar_requisicao(protocolo.ADD_STRUCTURE, payload)
+
+        # ✅ Fire-and-forget — resposta chega pelo WorkerListener
+        mensagem = protocolo.criar_mensagem(
+            protocolo.ADD_STRUCTURE,
+            {"usuario": asdict(self.estado.jogador_local), "linha": linha, "coluna": coluna}
+        )
+        self.rede.enviar(mensagem)
 
     def remover_estrutura(self, linha: int, coluna: int):
         # Remove estrutura
@@ -126,7 +128,8 @@ class ControladorCliente(QObject):
     def _ao_receber_mensagem(self, dados: dict):
         # Roteador de mensagens do servidor
         tipo, payload = protocolo.parse_mensagem(dados)
-
+        print(tipo)
+        print(payload)
         roteador = {
             protocolo.LOGIN_SUCCESS:  self._tratar_login_sucesso,
             protocolo.LOGIN_ERROR:    self._tratar_login_erro,
@@ -189,15 +192,12 @@ class ControladorCliente(QObject):
 
     def _tratar_acao_sucesso(self, payload: dict):
         # Ação sucesso
-        mensagem = payload.get("message", payload.get("mensagem", "Ação realizada"))
-        self.sinal_acao_sucesso.emit(mensagem)
-
-        self._iniciar_cooldown()
+        QMessageBox.warning(self.janela, "Status", payload)
+        #self._iniciar_cooldown()
 
     def _tratar_acao_erro(self, payload: dict):
         # Ação erro
-        mensagem = payload.get("message", payload.get("mensagem", "Ação inválida"))
-        self.sinal_acao_erro.emit(mensagem)
+        QMessageBox.warning(self.janela, "Status", payload)
 
     def _tratar_fim_de_jogo(self, payload: dict):
         # Fim de jogo

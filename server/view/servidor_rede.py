@@ -87,11 +87,11 @@ class ServidorRede:
                 print(f"[REQUISIÇÃO] {tipo} de {endereco}")
                 
                 # 4. DELEGAR PARA O CONTROLLER (Lógica de Negócio)
-                sucesso, mensagem = self.processar_comando(tipo, payload)
+                sucesso, tipo, mensagem = self.processar_comando(tipo, payload)
                 
                 # 5. ENVIAR RESPOSTA
                 # Prepara o JSON de resposta
-                resposta = {"success": sucesso, "payload": mensagem}
+                resposta = {"success": sucesso, "type": tipo, "payload": mensagem}
                 dados_resposta = json.dumps(resposta).encode('utf-8')
                 
                 # Empacota o tamanho da resposta no cabeçalho de 4 bytes
