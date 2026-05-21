@@ -18,9 +18,9 @@ TIME_ESCAVACAO = "escavacao"
 @dataclass
 class Jogador:
     # Jogador local
-    id: str = ""
+    id: int = -1
     nome: str = ""
-    time: str = ""
+    timeId: int = -1
     pontuacao: int = 0
 
 
@@ -69,13 +69,12 @@ class EstadoJogo:
             celula.tipo = dados.get("tipo", celula.tipo)
             celula.dono = dados.get("dono", celula.dono)
 
-    def definir_jogador(self, dados: dict) -> None:
+    def definir_jogador(self, dados: list) -> None:
         # Define jogador local
         self.jogador_local = Jogador(
-            id=dados.get("id", ""),
-            nome=dados.get("nome", ""),
-            time=dados.get("time", ""),
-            pontuacao=dados.get("pontuacao", 0)
+            id=dados[0],
+            nome=dados[1],
+            timeId=dados[3]
         )
 
     def resetar(self) -> None:

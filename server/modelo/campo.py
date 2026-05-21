@@ -7,18 +7,18 @@ class Campo:
     def getCampo(self):
         return self.campo
 
-    def interacaoCampo(self, usuario, posicao):
-        linha, coluna = posicao
+    def interacaoCampo(self, usuario: dict, linha: int, coluna: int):
+        
         celula = self.campo[linha][coluna]
-
-        if usuario.timeId == 1:
+        print(f"ID da celula achou: {celula.getJogadorAchou()}")
+        if usuario['timeId'] == 1:
             if celula.getJogadorEscondeu() != -1:
                 return False
-            celula.setJogadorEscondeu(usuario.id)
+            celula.setJogadorEscondeu(usuario['id'])
         else:
-            if celula.getJogadorAchou != -1:
+            if celula.getJogadorAchou() != -1:
                 return False
-            celula.setJogadorAchou(usuario.id)
+            celula.setJogadorAchou(usuario['id'])
 
         return True
 

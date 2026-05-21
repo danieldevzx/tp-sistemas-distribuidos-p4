@@ -1,15 +1,42 @@
-from PyQt6.QtWidgets import QWidget, QVBoxLayout, QLabel
-from PyQt6.QtCore import Qt
+from PyQt6.QtWidgets import QWidget, QGridLayout, QPushButton
+from PyQt6.QtCore import Qt, pyqtSignal
 
 class PaginaHome(QWidget):
+    requisitar_criar_celula = pyqtSignal(int, int) 
+
     def __init__(self):
         super().__init__()
-        layout = QVBoxLayout()
+        
+        layout = QGridLayout()
+        layout.setSpacing(10)
         layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
         
-        # Estilo da tela em branco com o texto centralizado
-        self.texto = QLabel("Seu SD aqui")
-        self.texto.setStyleSheet("font-size: 32px; font-weight: bold; color: #34495e;")
-        
-        layout.addWidget(self.texto)
+        self.botoes = []
+
+        for linha in range(3):
+            linha_botoes = []
+            for coluna in range(3):
+                btn = QPushButton()
+                btn.setFixedSize(100, 100)
+                
+                btn.setStyleSheet("""
+                    QPushButton {
+                        background-color: #34495e;
+                        border-radius: 8px;
+                    }
+                    QPushButton:hover {
+                        background-color: #415b76;
+                    }
+                """)
+                
+                btn.clicked.connect(lambda checked, l=linha, c=coluna: self.ao_clicar_quadrado(l, c))
+                
+                layout.addWidget(btn, linha, coluna)
+                linha_botoes.append(btn)
+                
+            self.botoes.append(linha_botoes)
+
         self.setLayout(layout)
+
+    def ao_clicar_quadrado(self, linha, coluna):
+        self.requisitar_criar_celula.emit(linha, coluna)

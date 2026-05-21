@@ -1,15 +1,15 @@
 import os
 from PyQt6.QtCore import QObject, QTimer, pyqtSignal
+from PyQt6.QtWidgets import QMessageBox
 from model.cliente_rede import ClienteRede
 from model.estado_jogo import EstadoJogo
 from model import protocolo
 from controller.worker import WorkerRequisicao, WorkerListener
+from dataclasses import asdict
 
 
 class ControladorCliente(QObject):
     # Controlador central
-
-
     sinal_login_sucesso = pyqtSignal(dict)
     sinal_login_erro = pyqtSignal(str)
     sinal_registro_sucesso = pyqtSignal(str)
@@ -57,7 +57,6 @@ class ControladorCliente(QObject):
         if self.janela is None:
             return
 
-
         pagina_login = getattr(self.janela, 'pagina_login', None)
         if pagina_login and hasattr(pagina_login, 'requisitar_login'):
             pagina_login.requisitar_login.connect(self.processar_login)
@@ -67,11 +66,16 @@ class ControladorCliente(QObject):
         if pagina_registro and hasattr(pagina_registro, 'requisitar_registro'):
             pagina_registro.requisitar_registro.connect(self.processar_registro)
 
+        pagina_home = getattr(self.janela, 'pagina_home', None)
+        if pagina_home and hasattr(pagina_home, 'requisitar_criar_celula'):
+            pagina_home.requisitar_criar_celula.connect(self.clicar_celula)
+
 
     def processar_login(self, usuario: str, senha: str):
         # Processa login
         if not usuario or not senha:
-            self.sinal_login_erro.emit("Por favor, preencha todos os campos")
+            QMessageBox.warning(self.janela, "Erro", "Por favor, preencha todos os campos")
+            #self.sinal_login_erro.emit("Por favor, preencha todos os campos")
             return
 
         self._definir_carregamento(True)
@@ -81,7 +85,8 @@ class ControladorCliente(QObject):
     def processar_registro(self, usuario: str, senha: str):
         # Processa registro
         if not usuario or not senha:
-            self.sinal_registro_erro.emit("Por favor, preencha todos os campos")
+            QMessageBox.warning(self.janela, "Erro", "Por favor, preencha todos os campos")
+            #self.sinal_registro_erro.emit("Por favor, preencha todos os campos")
             return
 
         self._definir_carregamento(True)
@@ -94,12 +99,10 @@ class ControladorCliente(QObject):
         if self.estado.cooldown_ativo:
             self.sinal_acao_erro.emit("Aguarde o cooldown terminar")
             return
-
-        mensagem = protocolo.criar_mensagem(
-            protocolo.ADD_STRUCTURE,
-            {"linha": linha, "coluna": coluna}
-        )
-        self.rede.enviar(mensagem)
+        
+        self._definir_carregamento(True)
+        payload = {"usuario": asdict(self.estado.jogador_local), "linha": linha, "coluna": coluna}
+        self._iniciar_requisicao(protocolo.ADD_STRUCTURE, payload)
 
     def remover_estrutura(self, linha: int, coluna: int):
         # Remove estrutura
@@ -133,6 +136,7 @@ class ControladorCliente(QObject):
             protocolo.ACTION_ERROR:   self._tratar_acao_erro,
             protocolo.GAME_OVER:      self._tratar_fim_de_jogo,
             protocolo.PLAYER_INFO:    self._tratar_jogador_info,
+            protocolo.ADD_STRUCTURE:  self._tratar_jogador_info
         }
 
         handler = roteador.get(tipo)
@@ -146,7 +150,7 @@ class ControladorCliente(QObject):
         self._definir_carregamento(False)
         self.estado.definir_jogador(payload)
         self.estado.conectado = True
-        self.sinal_login_sucesso.emit(payload)
+        #self.sinal_login_sucesso.emit(payload)
         self.sinal_conectado.emit()
 
 
@@ -259,28 +263,30 @@ class ControladorCliente(QObject):
 
 
         if "success" in resposta:
+            self._definir_carregamento(False)
             if tipo_original == protocolo.LOGIN:
                 if resposta["success"]:
-                    self._definir_carregamento(False)
                     self.estado.conectado = True
-                    self.estado.definir_jogador(resposta.get("payload", {"nome": ""}))
-                    self.sinal_login_sucesso.emit(resposta.get("payload", {}))
+                    self.estado.definir_jogador(payload)
+                    #self.sinal_login_sucesso.emit(payload)
                     self.sinal_conectado.emit()
                     if self.janela and hasattr(self.janela, 'mudar_pagina'):
                         self.janela.mudar_pagina(2)
 
                     self._iniciar_listener()
                 else:
-                    self._definir_carregamento(False)
                     self.sinal_login_erro.emit(resposta.get("message", "Erro no login"))
+
             elif tipo_original == protocolo.REGISTER:
-                self._definir_carregamento(False)
                 if resposta["success"]:
                     self.sinal_registro_sucesso.emit(resposta.get("message", "Registrado"))
                     if self.janela and hasattr(self.janela, 'mudar_pagina'):
                         self.janela.mudar_pagina(0)
                 else:
                     self.sinal_registro_erro.emit(resposta.get("message", "Erro no registro"))
+
+            elif tipo_original == protocolo.ADD_STRUCTURE:
+                QMessageBox.warning(self.janela, "Status", payload)
 
             if tipo_original == protocolo.REGISTER:
                 self.rede.fechar()

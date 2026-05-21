@@ -7,6 +7,6 @@ class Jogo:
     def getCampo(self):
         return self.campo
     
-    def interacaoCampo(self, usuario, posicao):
-        return self.campo.interacaoCampo(usuario, posicao)
+    def interacaoCampo(self, usuario: list, linha: int, coluna: int):
+        return self.campo.interacaoCampo(usuario, linha, coluna)
     

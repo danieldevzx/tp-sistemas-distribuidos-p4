@@ -1,30 +1,24 @@
 import socket
 import json
+import struct
 import threading
 import time
 
 
 class ClienteRede:
-    # Cliente TCP que comunica com o servidor usando JSON
-
     def __init__(self, host: str = 'localhost', porta: int = 5000):
         self.host = host
         self.porta = porta
         self.socket: socket.socket | None = None
-        self._buffer = b''
         self._lock_envio = threading.Lock()
         self._max_tentativas_reconexao = 3
 
-
     def conectar(self) -> bool:
-        # Conecta ao servidor
         try:
             self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             self.socket.settimeout(5.0)
             self.socket.connect((self.host, self.porta))
-
             self.socket.settimeout(None)
-            self._buffer = b''
             return True
         except Exception as e:
             print(f"[REDE] Erro de conexão: {e}")
@@ -32,20 +26,17 @@ class ClienteRede:
             return False
 
     def reconectar(self) -> bool:
-        # Tenta reconectar ao servidor com backoff exponencial
         self.fechar()
         for tentativa in range(self._max_tentativas_reconexao):
             espera = 2 ** tentativa
-            print(f"[REDE] Tentativa de reconexão {tentativa + 1}/{self._max_tentativas_reconexao} em {espera}s...")
+            print(f"[REDE] Tentativa {tentativa + 1}/{self._max_tentativas_reconexao} em {espera}s...")
             time.sleep(espera)
             if self.conectar():
-                print("[REDE] Reconectado com sucesso!")
+                print("[REDE] Reconectado!")
                 return True
-        print("[REDE] Falha ao reconectar após todas as tentativas.")
         return False
 
     def fechar(self) -> None:
-        # Fecha o socket de forma segura
         if self.socket:
             try:
                 self.socket.shutdown(socket.SHUT_RDWR)
@@ -56,55 +47,58 @@ class ClienteRede:
             except OSError:
                 pass
             self.socket = None
-        self._buffer = b''
 
     @property
     def esta_conectado(self) -> bool:
-        # Verifica se está conectado
         return self.socket is not None
 
-
     def enviar(self, mensagem: dict) -> bool:
-        # Envia mensagem JSON
         if not self.socket:
             return False
-
         with self._lock_envio:
             try:
-                dados = json.dumps(mensagem, ensure_ascii=False).encode('utf-8') + b'\n'
-                self.socket.sendall(dados)
+                dados = json.dumps(mensagem, ensure_ascii=False).encode('utf-8')
+                # ✅ Mesmo protocolo do servidor: 4 bytes de cabeçalho + corpo
+                cabecalho = struct.pack('>I', len(dados))
+                self.socket.sendall(cabecalho + dados)
                 return True
             except Exception as e:
                 print(f"[REDE] Erro ao enviar: {e}")
                 return False
 
-
     def receber_linha(self) -> dict | None:
-        # Lê do socket até encontrar \\n
         if not self.socket:
             return None
-
         try:
-            while b'\n' not in self._buffer:
-                dados = self.socket.recv(4096)
-                if not dados:
+            # ✅ Lê 4 bytes de cabeçalho
+            cabecalho = self._receber_exato(4)
+            if not cabecalho:
+                return None
+            tamanho = struct.unpack('>I', cabecalho)[0]
 
-                    return None
-                self._buffer += dados
+            # Lê o corpo completo
+            corpo = self._receber_exato(tamanho)
+            if not corpo:
+                return None
 
-
-            linha, self._buffer = self._buffer.split(b'\n', 1)
-            return json.loads(linha.decode('utf-8'))
-
+            return json.loads(corpo.decode('utf-8'))
         except (ConnectionResetError, BrokenPipeError, OSError):
             return None
         except json.JSONDecodeError as e:
-            print(f"[REDE] JSON inválido recebido: {e}")
+            print(f"[REDE] JSON inválido: {e}")
             return None
 
+    def _receber_exato(self, n: int) -> bytes | None:
+        """Garante que lê exatamente n bytes."""
+        dados = b''
+        while len(dados) < n:
+            chunk = self.socket.recv(n - len(dados))
+            if not chunk:
+                return None
+            dados += chunk
+        return dados
 
     def enviar_e_receber(self, mensagem: dict) -> dict | None:
-        # Envia e aguarda a resposta (bloqueante)
         if self.enviar(mensagem):
             return self.receber_linha()
         return None

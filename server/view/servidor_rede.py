@@ -15,6 +15,7 @@ class ServidorRede:
         self.host = host
         self.porta = porta
         self.servidor = None
+        self.usuario_controller = UsuarioController()
 
     # --- INICIALIZAÇÃO E LOOP PRINCIPAL ---
 
@@ -90,7 +91,7 @@ class ServidorRede:
                 
                 # 5. ENVIAR RESPOSTA
                 # Prepara o JSON de resposta
-                resposta = {"success": sucesso, "message": mensagem}
+                resposta = {"success": sucesso, "payload": mensagem}
                 dados_resposta = json.dumps(resposta).encode('utf-8')
                 
                 # Empacota o tamanho da resposta no cabeçalho de 4 bytes
@@ -111,8 +112,9 @@ class ServidorRede:
         Retorna uma tupla (sucesso, mensagem).
         """
         if tipo == 'REGISTER':
-            return UsuarioController.cadastrar(payload)
+            return self.usuario_controller.cadastrar(payload)
         elif tipo == 'LOGIN':
-            return UsuarioController.autenticar(payload)
-        
+            return self.usuario_controller.autenticar(payload)
+        elif tipo == 'ADD_STRUCTURE':
+            return self.usuario_controller.adicionar_estrutura(payload)
         return False, "Tipo de comando desconhecido"

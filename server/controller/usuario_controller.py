@@ -32,17 +32,16 @@ class UsuarioController:
         resultado = UsuarioModelo.buscar_por_credenciais(usuario, senha)
 
         if resultado:
-            return True, 
+            return True, resultado
         else:
             return False, "Usuário ou senha inválidos"
     
-    @staticmethod
-    def interagir_campo(dados_payload):
+    def adicionar_estrutura(self, dados_payload):
         usuario = dados_payload.get('usuario')
-        posicao = dados_payload.get('posicao')
-
-        return True, "e"
-        #else:
-
-
-        #return True, "CAPETA"
+        linha = dados_payload.get('linha')
+        coluna = dados_payload.get('coluna')
+        resultado = self.jogo.interacaoCampo(usuario, linha, coluna)
+        print("CHOU AQUIIII")
+        if resultado:
+            return True, "Estrutura adicionada com sucesso"
+        return False, "Não foi adicionada"
