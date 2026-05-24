@@ -1,63 +1,343 @@
 import os
+from PyQt6.QtCore import QObject, QTimer, pyqtSignal
 from PyQt6.QtWidgets import QMessageBox
 from model.cliente_rede import ClienteRede
-from .worker import Worker
+from model.estado_jogo import EstadoJogo
+from model import protocolo
+from controller.worker import WorkerRequisicao, WorkerListener
+from dataclasses import asdict
 
-class ControladorCliente:
-    def __init__(self, janela):
+
+class ControladorCliente(QObject):
+    # Controlador central
+    sinal_login_sucesso = pyqtSignal(dict)
+    sinal_login_erro = pyqtSignal(str)
+    sinal_registro_sucesso = pyqtSignal(str)
+    sinal_registro_erro = pyqtSignal(str)
+    sinal_campo_atualizado = pyqtSignal(list)
+    sinal_celula_atualizada = pyqtSignal(int, int, dict)
+    sinal_acao_sucesso = pyqtSignal(str)
+    sinal_acao_erro = pyqtSignal(str)
+    sinal_fim_de_jogo = pyqtSignal(dict)
+    sinal_jogador_info = pyqtSignal(dict)
+    sinal_desconectado = pyqtSignal()
+    sinal_conectado = pyqtSignal()
+    sinal_cooldown_inicio = pyqtSignal(int)
+    sinal_cooldown_fim = pyqtSignal()
+    sinal_tempo_atualizado = pyqtSignal(int)
+
+    COOLDOWN_ESCAVACAO = 30
+
+    def __init__(self, janela=None, parent=None):
+        # Inicializa o controlador
+        super().__init__(parent)
         self.janela = janela
-        
+
         host = os.environ.get('SERVER_HOST', 'localhost')
         porta = int(os.environ.get('SERVER_PORT', 5000))
-        self.modelo = ClienteRede(host=host, porta=porta)
-        
-        self.janela.pagina_login.requisitar_login.connect(self.processar_login)
-        self.janela.pagina_registro.requisitar_registro.connect(self.processar_registro)
-        
-        self.worker = None
+        self.rede = ClienteRede(host=host, porta=porta)
+        self.estado = EstadoJogo()
 
-    def processar_login(self, usuario, senha):
+
+        self._worker_requisicao: WorkerRequisicao | None = None
+        self._worker_listener: WorkerListener | None = None
+
+
+        self._timer_cooldown = QTimer(self)
+        self._timer_cooldown.setSingleShot(True)
+        self._timer_cooldown.timeout.connect(self._ao_encerrar_cooldown)
+
+
+        self._conectar_sinais_view()
+
+
+    def _conectar_sinais_view(self):
+        # Conecta sinais da View
+        if self.janela is None:
+            return
+
+        pagina_login = getattr(self.janela, 'pagina_login', None)
+        if pagina_login and hasattr(pagina_login, 'requisitar_login'):
+            pagina_login.requisitar_login.connect(self.processar_login)
+
+
+        pagina_registro = getattr(self.janela, 'pagina_registro', None)
+        if pagina_registro and hasattr(pagina_registro, 'requisitar_registro'):
+            pagina_registro.requisitar_registro.connect(self.processar_registro)
+
+        pagina_home = getattr(self.janela, 'pagina_home', None)
+        if pagina_home:
+            if hasattr(pagina_home, 'requisitar_criar_celula'):
+                pagina_home.requisitar_criar_celula.connect(self.clicar_celula)
+            # Conecta os sinais do controlador → view
+            self.sinal_campo_atualizado.connect(pagina_home.atualizar_campo_completo)
+            self.sinal_celula_atualizada.connect(pagina_home.atualizar_celula)
+
+
+    def processar_login(self, usuario: str, senha: str):
+        # Processa login
         if not usuario or not senha:
             QMessageBox.warning(self.janela, "Erro", "Por favor, preencha todos os campos")
+            #self.sinal_login_erro.emit("Por favor, preencha todos os campos")
             return
-            
-        payload = {"username": usuario, "password": senha}
-        self.iniciar_requisicao_background('LOGIN', payload)
 
-    def processar_registro(self, usuario, senha):
+        self._definir_carregamento(True)
+        payload = {"username": usuario, "password": senha}
+        self._iniciar_requisicao(protocolo.LOGIN, payload)
+
+    def processar_registro(self, usuario: str, senha: str):
+        # Processa registro
         if not usuario or not senha:
             QMessageBox.warning(self.janela, "Erro", "Por favor, preencha todos os campos")
+            #self.sinal_registro_erro.emit("Por favor, preencha todos os campos")
             return
-            
+
+        self._definir_carregamento(True)
         payload = {"username": usuario, "password": senha}
-        self.iniciar_requisicao_background('REGISTER', payload)
+        self._iniciar_requisicao(protocolo.REGISTER, payload)
 
-    def iniciar_requisicao_background(self, tipo, payload):
-        # Desabilita interface durante o carregamento
-        self.janela.definir_carregamento(True)
-        
-        # Cria e configura o Worker
-        self.worker = Worker(self.modelo, tipo, payload)
-        self.worker.sinal_resultado.connect(self.ao_receber_resposta)
-        self.worker.sinal_erro.connect(self.ao_ocorrer_erro)
-        
-        # Inicia thread
-        self.worker.start()
 
-    def ao_receber_resposta(self, resposta):
-        self.janela.definir_carregamento(False)
-        if resposta['sucesso']:
-            QMessageBox.information(self.janela, "Sucesso", resposta['mensagem'])
-            
-            # Se o login foi bem sucedido (estava na página 0), vai para a Home (página 2)
-            if self.janela.obter_indice_atual() == 0:
-                self.janela.mudar_pagina(2)
-            # Se o registro foi bem sucedido (estava na página 1), volta para o Login (página 0)
-            elif self.janela.obter_indice_atual() == 1:
-                self.janela.mudar_pagina(0)
+    def clicar_celula(self, linha: int, coluna: int):
+        if self.estado.cooldown_ativo:
+            self.sinal_acao_erro.emit("Aguarde o cooldown terminar")
+            return
+        mensagem = protocolo.criar_mensagem(
+            protocolo.ADD_STRUCTURE,
+            {"usuario": asdict(self.estado.jogador_local), "linha": linha, "coluna": coluna}
+        )
+        self.rede.enviar(mensagem)
+
+    def remover_estrutura(self, linha: int, coluna: int):
+        # Remove estrutura
+        mensagem = protocolo.criar_mensagem(
+            protocolo.REMOVE_STRUCTURE,
+            {"linha": linha, "coluna": coluna}
+        )
+        self.rede.enviar(mensagem)
+
+    def solicitar_campo(self):
+        # Envia GET_FIELD — a resposta FIELD_STATE chega pelo WorkerListener
+        mensagem = protocolo.criar_mensagem(protocolo.GET_FIELD)
+        self.rede.enviar(mensagem)   # ← fire-and-forget, resposta vem pelo listener
+
+    def enviar_ping(self):
+        # Envia ping
+        mensagem = protocolo.criar_mensagem(protocolo.PING)
+        self.rede.enviar(mensagem)
+
+
+    def _ao_receber_mensagem(self, dados: dict):
+        # Roteador de mensagens do servidor
+        tipo, payload = protocolo.parse_mensagem(dados)
+        print(tipo)
+        print(payload)
+        roteador = {
+            protocolo.LOGIN_SUCCESS:  self._tratar_login_sucesso,
+            protocolo.LOGIN_ERROR:    self._tratar_login_erro,
+            protocolo.FIELD_STATE:    self._tratar_campo_completo,
+            protocolo.FIELD_UPDATE:   self._tratar_campo_parcial,
+            protocolo.ACTION_SUCCESS: self._tratar_acao_sucesso,
+            protocolo.ACTION_ERROR:   self._tratar_acao_erro,
+            protocolo.GAME_OVER:      self._tratar_fim_de_jogo,
+            protocolo.PLAYER_INFO:    self._tratar_jogador_info,
+            protocolo.ADD_STRUCTURE:  self._tratar_jogador_info,
+            protocolo.PHASE_CHANGE:   self._tratar_mudanca_fase,
+            protocolo.TIMER_TICK:     self._tratar_tick_tempo
+        }
+
+        handler = roteador.get(tipo)
+        if handler:
+            handler(payload)
         else:
-            QMessageBox.critical(self.janela, "Erro", resposta['mensagem'])
+            print(f"[CTRL] Tipo de mensagem desconhecido: {tipo}")
 
-    def ao_ocorrer_erro(self, mensagem_erro):
-        self.janela.definir_carregamento(False)
-        QMessageBox.critical(self.janela, "Erro de Sistema", f"Ocorreu um erro inesperado: {mensagem_erro}")
+    def _tratar_login_sucesso(self, payload: dict):
+        self._definir_carregamento(False)
+        self.estado.definir_jogador(payload)
+        self.estado.conectado = True
+        self.sinal_conectado.emit()
+
+        if self.janela and hasattr(self.janela, 'mudar_pagina'):
+            self.janela.mudar_pagina(2)
+            # Atualiza cabeçalho da home com dados do jogador
+            pagina_home = getattr(self.janela, 'pagina_home', None)
+            if pagina_home and hasattr(pagina_home, 'definir_info_jogador'):
+                pagina_home.definir_info_jogador(
+                    self.estado.jogador_local.nome,
+                    self.estado.jogador_local.timeId
+                )
+
+        self.solicitar_campo()
+
+    def _tratar_login_erro(self, payload: dict):
+        # Login erro
+        self._definir_carregamento(False)
+        mensagem = payload.get("message", payload.get("mensagem", "Erro no login"))
+        self.sinal_login_erro.emit(mensagem)
+
+    def _tratar_campo_completo(self, payload: dict):
+        # Campo recebido
+        campo_dados = payload.get("campo", [])
+        self.estado.inicializar_campo(campo_dados)
+
+        self.estado.tempo_restante = payload.get("tempo_restante", self.estado.tempo_restante)
+        self.estado.tentativas_restantes = payload.get("tentativas_restantes", self.estado.tentativas_restantes)
+        self.estado.fase = payload.get("fase", self.estado.fase)
+
+        self.sinal_campo_atualizado.emit(campo_dados)
+
+        # Sincroniza fase e tempo na view
+        pagina_home = getattr(self.janela, 'pagina_home', None)
+        if pagina_home and hasattr(pagina_home, 'atualizar_fase'):
+            pagina_home.atualizar_fase(self.estado.fase, self.estado.tempo_restante)
+
+    def _tratar_campo_parcial(self, payload: dict):
+        # Atualiza célula
+        linha = payload.get("linha", -1)
+        coluna = payload.get("coluna", -1)
+        self.estado.atualizar_celula(linha, coluna, payload)
+        self.sinal_celula_atualizada.emit(linha, coluna, payload)
+
+    def _tratar_tick_tempo(self, payload: dict):
+        tempo = payload.get("tempo_restante", 0)
+        self.estado.tempo_restante = tempo
+        pagina_home = getattr(self.janela, 'pagina_home', None)
+        if pagina_home and hasattr(pagina_home, 'atualizar_tempo'):
+            pagina_home.atualizar_tempo(tempo)
+
+    def _tratar_mudanca_fase(self, payload: dict):
+        # Fase mudou (montagem → escavacao)
+        fase = payload.get("fase", "escavacao")
+        tempo = payload.get("tempo_restante", 0)
+        self.estado.fase = fase
+        self.estado.tempo_restante = tempo
+        pagina_home = getattr(self.janela, 'pagina_home', None)
+        if pagina_home and hasattr(pagina_home, 'atualizar_fase'):
+            pagina_home.atualizar_fase(fase, tempo)
+
+    def _tratar_acao_sucesso(self, payload: dict):
+        # Ação sucesso
+        QMessageBox.warning(self.janela, "Status", payload)
+        #self._iniciar_cooldown()
+
+    def _tratar_acao_erro(self, payload: dict):
+        # Ação erro
+        QMessageBox.warning(self.janela, "Status", payload)
+
+    def _tratar_fim_de_jogo(self, payload: dict):
+        # Fim de jogo
+        self.sinal_fim_de_jogo.emit(payload)
+
+    def _tratar_jogador_info(self, payload: dict):
+        # Atualiza jogador
+        self.estado.definir_jogador(payload)
+        self.sinal_jogador_info.emit(payload)
+
+
+    def _ao_desconectar(self):
+        # Tratamento de desconexão
+        self.estado.conectado = False
+        self.sinal_desconectado.emit()
+        print("[CTRL] Conexão perdida com o servidor.")
+
+
+        if self.rede.reconectar():
+            self.estado.conectado = True
+            self.sinal_conectado.emit()
+            self._iniciar_listener()
+            self.solicitar_campo()
+        else:
+            print("[CTRL] Não foi possível reconectar.")
+
+    def desconectar(self):
+        # Encerra a sessão
+        if self._worker_listener:
+            self._worker_listener.parar()
+            self._worker_listener.wait(3000)
+            self._worker_listener = None
+
+        self.rede.fechar()
+        self.estado.resetar()
+        self.estado.conectado = False
+
+
+    def _iniciar_cooldown(self):
+        # Inicia cooldown
+        self.estado.cooldown_ativo = True
+        self._timer_cooldown.start(self.COOLDOWN_ESCAVACAO * 1000)
+        self.sinal_cooldown_inicio.emit(self.COOLDOWN_ESCAVACAO)
+
+    def _ao_encerrar_cooldown(self):
+        # Fim cooldown
+        self.estado.cooldown_ativo = False
+        self.sinal_cooldown_fim.emit()
+
+
+    def _iniciar_requisicao(self, tipo: str, payload: dict):
+        # Dispara worker one-shot
+        self._worker_requisicao = WorkerRequisicao(self.rede, tipo, payload)
+        self._worker_requisicao.sinal_resultado.connect(
+            lambda resp: self._ao_receber_resposta_oneshot(tipo, resp)
+        )
+        self._worker_requisicao.sinal_erro.connect(self._ao_erro_requisicao)
+        self._worker_requisicao.start()
+
+    def _ao_receber_resposta_oneshot(self, tipo_original: str, resposta: dict):
+        # Processa resposta one-shot
+        tipo_resposta, payload = protocolo.parse_mensagem(resposta)
+
+
+        if "success" in resposta:
+            self._definir_carregamento(False)
+            if tipo_original == protocolo.LOGIN:
+                if resposta["success"]:
+                    # Delega para _tratar_login_sucesso que já faz:
+                    # definir_jogador, mudar_pagina, definir_info_jogador e solicitar_campo
+                    self._tratar_login_sucesso(payload)
+                    self._iniciar_listener()
+                else:
+                    self.sinal_login_erro.emit(resposta.get("message", "Erro no login"))
+
+            elif tipo_original == protocolo.REGISTER:
+                if resposta["success"]:
+                    self.sinal_registro_sucesso.emit(resposta.get("message", "Registrado"))
+                    if self.janela and hasattr(self.janela, 'mudar_pagina'):
+                        self.janela.mudar_pagina(0)
+                else:
+                    self.sinal_registro_erro.emit(resposta.get("message", "Erro no registro"))
+
+            elif tipo_original == protocolo.ADD_STRUCTURE:
+                QMessageBox.warning(self.janela, "Status", payload)
+
+            if tipo_original == protocolo.REGISTER:
+                self.rede.fechar()
+            return
+
+
+        self._ao_receber_mensagem(resposta)
+
+
+        if tipo_resposta == protocolo.LOGIN_SUCCESS:
+            self._iniciar_listener()
+
+    def _ao_erro_requisicao(self, mensagem: str):
+        # Erro de requisição
+        self._definir_carregamento(False)
+        self.sinal_login_erro.emit(mensagem)
+
+    def _iniciar_listener(self):
+        # Inicia worker listener
+        if self._worker_listener and self._worker_listener.isRunning():
+            return
+
+        self._worker_listener = WorkerListener(self.rede)
+        self._worker_listener.mensagem_recebida.connect(self._ao_receber_mensagem)
+        self._worker_listener.desconectado.connect(self._ao_desconectar)
+        self._worker_listener.start()
+        print("[CTRL] Listener de mensagens iniciado.")
+
+
+    def _definir_carregamento(self, carregando: bool):
+        # Atualiza carregamento
+        if self.janela and hasattr(self.janela, 'definir_carregamento'):
+            self.janela.definir_carregamento(carregando)
