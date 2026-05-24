@@ -18,8 +18,8 @@ class UsuarioController:
         
         if not usuario or not senha:
             return False, "ACTION_ERROR", "Usuário e senha são obrigatórios"
-        
-        return True, "ACTION_SUCCESS", UsuarioModelo.inserir(usuario, senha, random.randint(1, 2))
+        time = random.randint(1, 2)
+        return True, "ACTION_SUCCESS", UsuarioModelo.inserir(usuario, senha, 1)
 
     @staticmethod
     def autenticar(dados_payload):
@@ -45,3 +45,17 @@ class UsuarioController:
         if resultado:
             return True, "ACTION_SUCCESS", "Estrutura adicionada com sucesso"
         return False, "ACTION_ERROR", "Não foi adicionada"
+    
+    def obter_campo(self):
+        campo = self.jogo.getCampo().getCampo()  # matriz 20×20 de Estrutura
+        serializado = []
+        for linha in campo:
+            linha_dados = []
+            for celula in linha:
+                linha_dados.append({
+                    "jogador_escondeu": celula.getJogadorEscondeu(),
+                    "jogador_achou":    celula.getJogadorAchou(),
+                })
+            serializado.append(linha_dados)
+
+        return True, "FIELD_STATE", {"campo": serializado}

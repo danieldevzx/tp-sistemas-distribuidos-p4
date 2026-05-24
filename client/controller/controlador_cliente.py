@@ -33,7 +33,6 @@ class ControladorCliente(QObject):
         super().__init__(parent)
         self.janela = janela
 
-
         host = os.environ.get('SERVER_HOST', 'localhost')
         porta = int(os.environ.get('SERVER_PORT', 5000))
         self.rede = ClienteRede(host=host, porta=porta)
@@ -67,8 +66,12 @@ class ControladorCliente(QObject):
             pagina_registro.requisitar_registro.connect(self.processar_registro)
 
         pagina_home = getattr(self.janela, 'pagina_home', None)
-        if pagina_home and hasattr(pagina_home, 'requisitar_criar_celula'):
-            pagina_home.requisitar_criar_celula.connect(self.clicar_celula)
+        if pagina_home:
+            if hasattr(pagina_home, 'requisitar_criar_celula'):
+                pagina_home.requisitar_criar_celula.connect(self.clicar_celula)
+            # Conecta os sinais do controlador → view
+            self.sinal_campo_atualizado.connect(pagina_home.atualizar_campo_completo)
+            self.sinal_celula_atualizada.connect(pagina_home.atualizar_celula)
 
 
     def processar_login(self, usuario: str, senha: str):
@@ -98,8 +101,6 @@ class ControladorCliente(QObject):
         if self.estado.cooldown_ativo:
             self.sinal_acao_erro.emit("Aguarde o cooldown terminar")
             return
-
-        # ✅ Fire-and-forget — resposta chega pelo WorkerListener
         mensagem = protocolo.criar_mensagem(
             protocolo.ADD_STRUCTURE,
             {"usuario": asdict(self.estado.jogador_local), "linha": linha, "coluna": coluna}
@@ -115,9 +116,9 @@ class ControladorCliente(QObject):
         self.rede.enviar(mensagem)
 
     def solicitar_campo(self):
-        # Solicita campo
+        # Envia GET_FIELD — a resposta FIELD_STATE chega pelo WorkerListener
         mensagem = protocolo.criar_mensagem(protocolo.GET_FIELD)
-        self.rede.enviar(mensagem)
+        self.rede.enviar(mensagem)   # ← fire-and-forget, resposta vem pelo listener
 
     def enviar_ping(self):
         # Envia ping
@@ -149,17 +150,20 @@ class ControladorCliente(QObject):
             print(f"[CTRL] Tipo de mensagem desconhecido: {tipo}")
 
     def _tratar_login_sucesso(self, payload: dict):
-        # Login sucesso
         self._definir_carregamento(False)
         self.estado.definir_jogador(payload)
         self.estado.conectado = True
-        #self.sinal_login_sucesso.emit(payload)
         self.sinal_conectado.emit()
-
 
         if self.janela and hasattr(self.janela, 'mudar_pagina'):
             self.janela.mudar_pagina(2)
-
+            # Atualiza cabeçalho da home com dados do jogador
+            pagina_home = getattr(self.janela, 'pagina_home', None)
+            if pagina_home and hasattr(pagina_home, 'definir_info_jogador'):
+                pagina_home.definir_info_jogador(
+                    self.estado.jogador_local.nome,
+                    self.estado.jogador_local.timeId
+                )
 
         self.solicitar_campo()
 
@@ -266,13 +270,9 @@ class ControladorCliente(QObject):
             self._definir_carregamento(False)
             if tipo_original == protocolo.LOGIN:
                 if resposta["success"]:
-                    self.estado.conectado = True
-                    self.estado.definir_jogador(payload)
-                    #self.sinal_login_sucesso.emit(payload)
-                    self.sinal_conectado.emit()
-                    if self.janela and hasattr(self.janela, 'mudar_pagina'):
-                        self.janela.mudar_pagina(2)
-
+                    # Delega para _tratar_login_sucesso que já faz:
+                    # definir_jogador, mudar_pagina, definir_info_jogador e solicitar_campo
+                    self._tratar_login_sucesso(payload)
                     self._iniciar_listener()
                 else:
                     self.sinal_login_erro.emit(resposta.get("message", "Erro no login"))
