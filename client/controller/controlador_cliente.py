@@ -116,9 +116,10 @@ class ControladorCliente(QObject):
         self.rede.enviar(mensagem)
 
     def solicitar_campo(self):
-        # Envia GET_FIELD — a resposta FIELD_STATE chega pelo WorkerListener
-        mensagem = protocolo.criar_mensagem(protocolo.GET_FIELD)
-        self.rede.enviar(mensagem)   # ← fire-and-forget, resposta vem pelo listener
+        # Envia GET_FIELD com time_id para o servidor filtrar o campo corretamente
+        time_id = self.estado.jogador_local.timeId if self.estado.jogador_local else -1
+        mensagem = protocolo.criar_mensagem(protocolo.GET_FIELD, {"time_id": time_id})
+        self.rede.enviar(mensagem)
 
     def enviar_ping(self):
         # Envia ping

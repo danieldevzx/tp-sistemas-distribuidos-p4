@@ -27,14 +27,14 @@ class CelulaWidget(QPushButton):
         self.clicked.connect(lambda: self.clicada.emit(self.linha, self.coluna))
 
     def atualizar(self, jogador_escondeu: int, jogador_achou: int):
+        cor = COR_VAZIA
         if jogador_escondeu != -1 and jogador_achou != -1:
             cor = COR_AMBOS
         elif jogador_escondeu != -1:
             cor = COR_ESCONDEU
         elif jogador_achou != -1:
             cor = COR_ACHOU
-        else:
-            cor = COR_VAZIA
+        
         self._aplicar_estilo(cor)
 
     def _aplicar_estilo(self, cor: str):
@@ -57,10 +57,6 @@ class PaginaHome(QWidget):
         self._fase = "montagem"
         self._time_id = -1
         self._construir_ui()
-
-    # ------------------------------------------------------------------ #
-    #  Construção da UI                                                    #
-    # ------------------------------------------------------------------ #
 
     def _construir_ui(self):
         raiz = QVBoxLayout(self)
@@ -189,10 +185,6 @@ class PaginaHome(QWidget):
         for linha in self._celulas:
             for celula in linha:
                 celula.setEnabled(habilitado)
-
-    # ------------------------------------------------------------------ #
-    #  API pública — chamada pelo controlador                              #
-    # ------------------------------------------------------------------ #
 
     def definir_info_jogador(self, nome: str, time_id: int):
         self._time_id = time_id

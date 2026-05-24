@@ -12,34 +12,69 @@ class ServidorRede:
         self.porta = porta
         self.servidor = None
         self.usuario_controller = UsuarioController()
-        self._clientes: list[socket.socket] = []
+        # Guarda tuplas (socket, time_id) para poder filtrar broadcasts por time
+        self._clientes: list[tuple[socket.socket, int]] = []
         self._lock_clientes = threading.Lock()
 
     # ------------------------------------------------------------------ #
     #  Gerência de clientes                                                #
     # ------------------------------------------------------------------ #
 
-    def _registrar_cliente(self, socket_cliente):
+    def _registrar_cliente(self, sock, time_id: int):
         with self._lock_clientes:
-            self._clientes.append(socket_cliente)
+            self._clientes.append((sock, time_id))
 
-    def _remover_cliente(self, socket_cliente):
+    def _remover_cliente(self, sock):
         with self._lock_clientes:
-            if socket_cliente in self._clientes:
-                self._clientes.remove(socket_cliente)
+            self._clientes = [(s, t) for s, t in self._clientes if s is not sock]
+
+    def _enviar_pacote(self, sock, mensagem: dict) -> bool:
+        try:
+            dados = json.dumps(mensagem).encode('utf-8')
+            sock.sendall(struct.pack('>I', len(dados)) + dados)
+            return True
+        except Exception:
+            return False
 
     def _broadcast(self, mensagem: dict):
-        dados   = json.dumps(mensagem).encode('utf-8')
-        pacote  = struct.pack('>I', len(dados)) + dados
+        """Envia a mesma mensagem para todos os clientes."""
         with self._lock_clientes:
             mortos = []
-            for cliente in self._clientes:
-                try:
-                    cliente.sendall(pacote)
-                except Exception:
-                    mortos.append(cliente)
-            for m in mortos:
-                self._clientes.remove(m)
+            for sock, _ in self._clientes:
+                if not self._enviar_pacote(sock, mensagem):
+                    mortos.append(sock)
+            for sock in mortos:
+                self._clientes = [(s, t) for s, t in self._clientes if s is not sock]
+
+    def _broadcast_field_update(self, linha: int, coluna: int, celula):
+        """
+        Envia FIELD_UPDATE com filtragem por time:
+        - Time 1 (montagem):  vê jogador_escondeu e jogador_achou normalmente.
+        - Time 2 (escavação): jogador_escondeu sempre chega como -1 (célula oculta).
+        """
+        with self._lock_clientes:
+            mortos = []
+            for sock, time_id in self._clientes:
+                escondeu = celula.getJogadorEscondeu()
+                achou    = celula.getJogadorAchou()
+
+                # Time de escavação não sabe onde o time de montagem escondeu
+                if time_id == 2:
+                    escondeu = -1
+
+                msg = {
+                    "type": "FIELD_UPDATE",
+                    "payload": {
+                        "linha": linha,
+                        "coluna": coluna,
+                        "jogador_escondeu": escondeu,
+                        "jogador_achou":    achou,
+                    }
+                }
+                if not self._enviar_pacote(sock, msg):
+                    mortos.append(sock)
+            for sock in mortos:
+                self._clientes = [(s, t) for s, t in self._clientes if s is not sock]
 
     # ------------------------------------------------------------------ #
     #  Inicialização                                                       #
@@ -47,8 +82,6 @@ class ServidorRede:
 
     def iniciar(self):
         inicializar_banco()
-
-        # Registra o callback de fim de montagem ANTES de aceitar conexões
         self.usuario_controller.jogo.iniciar_timer(self._ao_tick, self._ao_fim_montagem)
 
         self.servidor = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -59,9 +92,8 @@ class ServidorRede:
 
         try:
             while True:
-                socket_cliente, endereco = self.servidor.accept()
-                t = threading.Thread(target=self.tratar_cliente,
-                                     args=(socket_cliente, endereco))
+                sock, endereco = self.servidor.accept()
+                t = threading.Thread(target=self.tratar_cliente, args=(sock, endereco))
                 t.daemon = True
                 t.start()
                 print(f"[CONEXÕES ATIVAS] {threading.active_count() - 1}")
@@ -72,11 +104,10 @@ class ServidorRede:
                 self.servidor.close()
 
     # ------------------------------------------------------------------ #
-    #  Callback: fim da fase de montagem                                   #
+    #  Callbacks do timer                                                  #
     # ------------------------------------------------------------------ #
 
     def _ao_tick(self, tempo_restante: int):
-        """Broadcast a cada segundo com o tempo restante."""
         self._broadcast({
             "type": "TIMER_TICK",
             "payload": {"tempo_restante": tempo_restante}
@@ -93,19 +124,19 @@ class ServidorRede:
     #  Loop de cliente                                                     #
     # ------------------------------------------------------------------ #
 
-    def tratar_cliente(self, socket_cliente, endereco):
+    def tratar_cliente(self, sock, endereco):
         print(f"[NOVA CONEXÃO] {endereco} conectado.")
-        autenticado = False
+        time_id = -1
         try:
             while True:
-                cabecalho = socket_cliente.recv(4)
+                cabecalho = sock.recv(4)
                 if not cabecalho:
                     break
 
                 tamanho = struct.unpack('>I', cabecalho)[0]
                 dados = b''
                 while len(dados) < tamanho:
-                    chunk = socket_cliente.recv(tamanho - len(dados))
+                    chunk = sock.recv(tamanho - len(dados))
                     if not chunk:
                         break
                     dados += chunk
@@ -119,39 +150,48 @@ class ServidorRede:
 
                 sucesso, tipo_resp, mensagem = self.processar_comando(tipo, payload)
 
-                if tipo == 'LOGIN' and sucesso and not autenticado:
-                    self._registrar_cliente(socket_cliente)
-                    autenticado = True
+                # Registra cliente com seu time_id após login
+                if tipo == 'LOGIN' and sucesso:
+                    # mensagem é a lista retornada por autenticar: [id, nome, ..., time_id]
+                    time_id = mensagem[3]
+                    self._registrar_cliente(sock, time_id)
 
-                resposta      = {"success": sucesso, "type": tipo_resp, "payload": mensagem}
-                dados_resp    = json.dumps(resposta).encode('utf-8')
-                socket_cliente.sendall(struct.pack('>I', len(dados_resp)) + dados_resp)
+                # Filtra FIELD_STATE para o time de escavação
+                if tipo == 'GET_FIELD' and sucesso:
+                    time_id_req = payload.get('time_id', time_id)
+                    if time_id_req == 2:
+                        mensagem = self._filtrar_campo_para_escavacao(mensagem)
 
-                # Broadcast de atualização de célula após ADD_STRUCTURE
+                resposta   = {"success": sucesso, "type": tipo_resp, "payload": mensagem}
+                dados_resp = json.dumps(resposta).encode('utf-8')
+                sock.sendall(struct.pack('>I', len(dados_resp)) + dados_resp)
+
+                # Broadcast filtrado por time após ADD_STRUCTURE
                 if tipo == 'ADD_STRUCTURE' and sucesso:
                     linha  = payload.get("linha")
                     coluna = payload.get("coluna")
                     celula = self.usuario_controller.jogo.getCampo().getCampo()[linha][coluna]
-                    self._broadcast({
-                        "type": "FIELD_UPDATE",
-                        "payload": {
-                            "linha": linha,
-                            "coluna": coluna,
-                            "jogador_escondeu": celula.getJogadorEscondeu(),
-                            "jogador_achou":    celula.getJogadorAchou(),
-                        }
-                    })
-
-                # Broadcast de tick de tempo a cada segundo vem do timer interno do Jogo.
-                # Aqui enviamos o tempo junto com o FIELD_STATE quando o cliente pede.
+                    self._broadcast_field_update(linha, coluna, celula)
 
         except Exception as e:
             print(f"[ERRO] {endereco}: {e}")
         finally:
-            if autenticado:
-                self._remover_cliente(socket_cliente)
-            socket_cliente.close()
+            self._remover_cliente(sock)
+            sock.close()
             print(f"[DESCONECTADO] {endereco} fechado.")
+
+    def _filtrar_campo_para_escavacao(self, mensagem: dict) -> dict:
+        """Remove jogador_escondeu do campo antes de enviar ao time de escavação."""
+        campo_filtrado = []
+        for linha in mensagem.get("campo", []):
+            linha_filtrada = []
+            for celula in linha:
+                linha_filtrada.append({
+                    "jogador_escondeu": -1,           # oculto para escavação
+                    "jogador_achou":    celula["jogador_achou"],
+                })
+            campo_filtrado.append(linha_filtrada)
+        return {**mensagem, "campo": campo_filtrado}
 
     def processar_comando(self, tipo, payload):
         if tipo == 'REGISTER':
