@@ -140,7 +140,9 @@ class ControladorCliente(QObject):
             protocolo.ACTION_ERROR:   self._tratar_acao_erro,
             protocolo.GAME_OVER:      self._tratar_fim_de_jogo,
             protocolo.PLAYER_INFO:    self._tratar_jogador_info,
-            protocolo.ADD_STRUCTURE:  self._tratar_jogador_info
+            protocolo.ADD_STRUCTURE:  self._tratar_jogador_info,
+            protocolo.PHASE_CHANGE:   self._tratar_mudanca_fase,
+            protocolo.TIMER_TICK:     self._tratar_tick_tempo
         }
 
         handler = roteador.get(tipo)
@@ -178,14 +180,16 @@ class ControladorCliente(QObject):
         campo_dados = payload.get("campo", [])
         self.estado.inicializar_campo(campo_dados)
 
-
         self.estado.tempo_restante = payload.get("tempo_restante", self.estado.tempo_restante)
         self.estado.tentativas_restantes = payload.get("tentativas_restantes", self.estado.tentativas_restantes)
         self.estado.fase = payload.get("fase", self.estado.fase)
 
         self.sinal_campo_atualizado.emit(campo_dados)
-        if self.estado.tempo_restante > 0:
-            self.sinal_tempo_atualizado.emit(self.estado.tempo_restante)
+
+        # Sincroniza fase e tempo na view
+        pagina_home = getattr(self.janela, 'pagina_home', None)
+        if pagina_home and hasattr(pagina_home, 'atualizar_fase'):
+            pagina_home.atualizar_fase(self.estado.fase, self.estado.tempo_restante)
 
     def _tratar_campo_parcial(self, payload: dict):
         # Atualiza célula
@@ -193,6 +197,23 @@ class ControladorCliente(QObject):
         coluna = payload.get("coluna", -1)
         self.estado.atualizar_celula(linha, coluna, payload)
         self.sinal_celula_atualizada.emit(linha, coluna, payload)
+
+    def _tratar_tick_tempo(self, payload: dict):
+        tempo = payload.get("tempo_restante", 0)
+        self.estado.tempo_restante = tempo
+        pagina_home = getattr(self.janela, 'pagina_home', None)
+        if pagina_home and hasattr(pagina_home, 'atualizar_tempo'):
+            pagina_home.atualizar_tempo(tempo)
+
+    def _tratar_mudanca_fase(self, payload: dict):
+        # Fase mudou (montagem → escavacao)
+        fase = payload.get("fase", "escavacao")
+        tempo = payload.get("tempo_restante", 0)
+        self.estado.fase = fase
+        self.estado.tempo_restante = tempo
+        pagina_home = getattr(self.janela, 'pagina_home', None)
+        if pagina_home and hasattr(pagina_home, 'atualizar_fase'):
+            pagina_home.atualizar_fase(fase, tempo)
 
     def _tratar_acao_sucesso(self, payload: dict):
         # Ação sucesso

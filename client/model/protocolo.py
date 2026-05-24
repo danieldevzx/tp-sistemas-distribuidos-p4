@@ -14,6 +14,8 @@ ACTION_SUCCESS = "ACTION_SUCCESS"
 ACTION_ERROR = "ACTION_ERROR"
 GAME_OVER = "GAME_OVER"
 PLAYER_INFO = "PLAYER_INFO"
+PHASE_CHANGE = "PHASE_CHANGE"
+TIMER_TICK   = "TIMER_TICK"
 
 
 def criar_mensagem(tipo: str, payload: dict | None = None) -> dict:

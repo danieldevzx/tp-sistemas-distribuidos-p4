@@ -5,16 +5,19 @@ import struct
 from modelo.bd_base import inicializar_banco
 from controller.usuario_controller import UsuarioController
 
+
 class ServidorRede:
     def __init__(self, host='0.0.0.0', porta=5000):
         self.host = host
         self.porta = porta
         self.servidor = None
         self.usuario_controller = UsuarioController()
-
-        # Guarda todos os sockets de clientes logados
         self._clientes: list[socket.socket] = []
-        self._lock_clientes = threading.Lock()  # protege a lista
+        self._lock_clientes = threading.Lock()
+
+    # ------------------------------------------------------------------ #
+    #  Gerência de clientes                                                #
+    # ------------------------------------------------------------------ #
 
     def _registrar_cliente(self, socket_cliente):
         with self._lock_clientes:
@@ -22,14 +25,12 @@ class ServidorRede:
 
     def _remover_cliente(self, socket_cliente):
         with self._lock_clientes:
-            self._clientes.remove(socket_cliente)
+            if socket_cliente in self._clientes:
+                self._clientes.remove(socket_cliente)
 
     def _broadcast(self, mensagem: dict):
-        """Envia uma mensagem para TODOS os clientes conectados."""
-        dados = json.dumps(mensagem).encode('utf-8')
-        cabecalho = struct.pack('>I', len(dados))
-        pacote = cabecalho + dados
-
+        dados   = json.dumps(mensagem).encode('utf-8')
+        pacote  = struct.pack('>I', len(dados)) + dados
         with self._lock_clientes:
             mortos = []
             for cliente in self._clientes:
@@ -40,8 +41,16 @@ class ServidorRede:
             for m in mortos:
                 self._clientes.remove(m)
 
+    # ------------------------------------------------------------------ #
+    #  Inicialização                                                       #
+    # ------------------------------------------------------------------ #
+
     def iniciar(self):
         inicializar_banco()
+
+        # Registra o callback de fim de montagem ANTES de aceitar conexões
+        self.usuario_controller.jogo.iniciar_timer(self._ao_tick, self._ao_fim_montagem)
+
         self.servidor = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.servidor.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         self.servidor.bind((self.host, self.porta))
@@ -51,17 +60,38 @@ class ServidorRede:
         try:
             while True:
                 socket_cliente, endereco = self.servidor.accept()
-                thread = threading.Thread(
-                    target=self.tratar_cliente,
-                    args=(socket_cliente, endereco)
-                )
-                thread.start()
+                t = threading.Thread(target=self.tratar_cliente,
+                                     args=(socket_cliente, endereco))
+                t.daemon = True
+                t.start()
                 print(f"[CONEXÕES ATIVAS] {threading.active_count() - 1}")
         except KeyboardInterrupt:
             print("\n[DESLIGANDO] Servidor parado.")
         finally:
             if self.servidor:
                 self.servidor.close()
+
+    # ------------------------------------------------------------------ #
+    #  Callback: fim da fase de montagem                                   #
+    # ------------------------------------------------------------------ #
+
+    def _ao_tick(self, tempo_restante: int):
+        """Broadcast a cada segundo com o tempo restante."""
+        self._broadcast({
+            "type": "TIMER_TICK",
+            "payload": {"tempo_restante": tempo_restante}
+        })
+
+    def _ao_fim_montagem(self):
+        print("[JOGO] Fase de montagem encerrada — broadcast PHASE_CHANGE")
+        self._broadcast({
+            "type": "PHASE_CHANGE",
+            "payload": {"fase": "escavacao", "tempo_restante": 0}
+        })
+
+    # ------------------------------------------------------------------ #
+    #  Loop de cliente                                                     #
+    # ------------------------------------------------------------------ #
 
     def tratar_cliente(self, socket_cliente, endereco):
         print(f"[NOVA CONEXÃO] {endereco} conectado.")
@@ -72,42 +102,37 @@ class ServidorRede:
                 if not cabecalho:
                     break
 
-                tamanho_mensagem = struct.unpack('>I', cabecalho)[0]
+                tamanho = struct.unpack('>I', cabecalho)[0]
                 dados = b''
-                while len(dados) < tamanho_mensagem:
-                    chunk = socket_cliente.recv(tamanho_mensagem - len(dados))
+                while len(dados) < tamanho:
+                    chunk = socket_cliente.recv(tamanho - len(dados))
                     if not chunk:
                         break
                     dados += chunk
-
                 if not dados:
                     break
 
                 requisicao = json.loads(dados.decode('utf-8'))
-                tipo = requisicao.get('type')
+                tipo    = requisicao.get('type')
                 payload = requisicao.get('payload')
-
                 print(f"[REQUISIÇÃO] {tipo} de {endereco}")
 
                 sucesso, tipo_resp, mensagem = self.processar_comando(tipo, payload)
 
-                # Após login bem-sucedido, registra o socket para broadcasts
                 if tipo == 'LOGIN' and sucesso and not autenticado:
                     self._registrar_cliente(socket_cliente)
                     autenticado = True
 
-                resposta = {"success": sucesso, "type": tipo_resp, "payload": mensagem}
-                dados_resposta = json.dumps(resposta).encode('utf-8')
-                cabecalho_resposta = struct.pack('>I', len(dados_resposta))
-                socket_cliente.sendall(cabecalho_resposta + dados_resposta)
+                resposta      = {"success": sucesso, "type": tipo_resp, "payload": mensagem}
+                dados_resp    = json.dumps(resposta).encode('utf-8')
+                socket_cliente.sendall(struct.pack('>I', len(dados_resp)) + dados_resp)
 
-                # Se foi ADD_STRUCTURE com sucesso → broadcast FIELD_UPDATE
+                # Broadcast de atualização de célula após ADD_STRUCTURE
                 if tipo == 'ADD_STRUCTURE' and sucesso:
                     linha  = payload.get("linha")
                     coluna = payload.get("coluna")
-                    # Busca o estado atualizado diretamente no modelo
                     celula = self.usuario_controller.jogo.getCampo().getCampo()[linha][coluna]
-                    update = {
+                    self._broadcast({
                         "type": "FIELD_UPDATE",
                         "payload": {
                             "linha": linha,
@@ -115,8 +140,10 @@ class ServidorRede:
                             "jogador_escondeu": celula.getJogadorEscondeu(),
                             "jogador_achou":    celula.getJogadorAchou(),
                         }
-                    }
-                    self._broadcast(update)  # notifica TODOS (inclusive o autor)
+                    })
+
+                # Broadcast de tick de tempo a cada segundo vem do timer interno do Jogo.
+                # Aqui enviamos o tempo junto com o FIELD_STATE quando o cliente pede.
 
         except Exception as e:
             print(f"[ERRO] {endereco}: {e}")
@@ -134,5 +161,5 @@ class ServidorRede:
         elif tipo == 'ADD_STRUCTURE':
             return self.usuario_controller.adicionar_estrutura(payload)
         elif tipo == 'GET_FIELD':
-            return self.usuario_controller.obter_campo()  # ← novo (ver abaixo)
+            return self.usuario_controller.obter_campo()
         return False, "ACTION_ERROR", "Tipo de comando desconhecido"
