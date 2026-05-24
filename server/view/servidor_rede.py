@@ -12,22 +12,11 @@ class ServidorRede:
         self.porta = porta
         self.servidor = None
         self.usuario_controller = UsuarioController()
-<<<<<<< Updated upstream
-        # Guarda tuplas (socket, time_id) para poder filtrar broadcasts por time
         self._clientes: list[tuple[socket.socket, int]] = []
-=======
-        # Cada entrada: {"sock": socket, "time_id": int}
-        self._clientes: list[dict] = []
->>>>>>> Stashed changes
         self._lock_clientes = threading.Lock()
-
-    # ------------------------------------------------------------------ #
-    #  Gerência de clientes                                                #
-    # ------------------------------------------------------------------ #
 
     def _registrar_cliente(self, sock, time_id: int):
         with self._lock_clientes:
-<<<<<<< Updated upstream
             self._clientes.append((sock, time_id))
 
     def _remover_cliente(self, sock):
@@ -35,15 +24,6 @@ class ServidorRede:
             self._clientes = [(s, t) for s, t in self._clientes if s is not sock]
 
     def _enviar_pacote(self, sock, mensagem: dict) -> bool:
-=======
-            self._clientes.append({"sock": sock, "time_id": time_id})
-
-    def _remover_cliente(self, sock):
-        with self._lock_clientes:
-            self._clientes = [c for c in self._clientes if c["sock"] is not sock]
-
-    def _enviar(self, sock, mensagem: dict) -> bool:
->>>>>>> Stashed changes
         try:
             dados = json.dumps(mensagem).encode('utf-8')
             sock.sendall(struct.pack('>I', len(dados)) + dados)
@@ -55,7 +35,6 @@ class ServidorRede:
         """Envia a mesma mensagem para todos os clientes."""
         with self._lock_clientes:
             mortos = []
-<<<<<<< Updated upstream
             for sock, _ in self._clientes:
                 if not self._enviar_pacote(sock, mensagem):
                     mortos.append(sock)
@@ -73,9 +52,7 @@ class ServidorRede:
             for sock, time_id in self._clientes:
                 escondeu = celula.getJogadorEscondeu()
                 achou    = celula.getJogadorAchou()
-
-                # Time de escavação não sabe onde o time de montagem escondeu
-                if time_id == 2:
+                if time_id == 2 and achou == -1:
                     escondeu = -1
 
                 msg = {
@@ -91,39 +68,6 @@ class ServidorRede:
                     mortos.append(sock)
             for sock in mortos:
                 self._clientes = [(s, t) for s, t in self._clientes if s is not sock]
-=======
-            for c in self._clientes:
-                if not self._enviar(c["sock"], mensagem):
-                    mortos.append(c["sock"])
-            self._clientes = [c for c in self._clientes if c["sock"] not in mortos]
-
-    def _broadcast_field_update(self, linha: int, coluna: int, celula):
-        """
-        Envia FIELD_UPDATE filtrado por time:
-        - Time 1 (montagem):  vê jogador_escondeu normalmente.
-        - Time 2 (escavação): recebe jogador_escondeu = -1 (oculto).
-        """
-        with self._lock_clientes:
-            mortos = []
-            for c in self._clientes:
-                escondeu = celula.getJogadorEscondeu() if c["time_id"] == 1 else -1
-                msg = {
-                    "type": "FIELD_UPDATE",
-                    "payload": {
-                        "linha":            linha,
-                        "coluna":           coluna,
-                        "jogador_escondeu": escondeu,
-                        "jogador_achou":    celula.getJogadorAchou(),
-                    }
-                }
-                if not self._enviar(c["sock"], msg):
-                    mortos.append(c["sock"])
-            self._clientes = [c for c in self._clientes if c["sock"] not in mortos]
->>>>>>> Stashed changes
-
-    # ------------------------------------------------------------------ #
-    #  Inicialização                                                       #
-    # ------------------------------------------------------------------ #
 
     def iniciar(self):
         inicializar_banco()
@@ -148,10 +92,6 @@ class ServidorRede:
             if self.servidor:
                 self.servidor.close()
 
-    # ------------------------------------------------------------------ #
-    #  Callbacks do timer                                                  #
-    # ------------------------------------------------------------------ #
-
     def _ao_tick(self, tempo_restante: int):
         self._broadcast({
             "type": "TIMER_TICK",
@@ -164,10 +104,6 @@ class ServidorRede:
             "type": "PHASE_CHANGE",
             "payload": {"fase": "escavacao", "tempo_restante": 0}
         })
-
-    # ------------------------------------------------------------------ #
-    #  Loop de cliente                                                     #
-    # ------------------------------------------------------------------ #
 
     def tratar_cliente(self, sock, endereco):
         print(f"[NOVA CONEXÃO] {endereco} conectado.")
@@ -195,37 +131,18 @@ class ServidorRede:
 
                 sucesso, tipo_resp, mensagem = self.processar_comando(tipo, payload)
 
-<<<<<<< Updated upstream
-                # Registra cliente com seu time_id após login
                 if tipo == 'LOGIN' and sucesso:
-                    # mensagem é a lista retornada por autenticar: [id, nome, ..., time_id]
                     time_id = mensagem[3]
                     self._registrar_cliente(sock, time_id)
-
-                # Filtra FIELD_STATE para o time de escavação
                 if tipo == 'GET_FIELD' and sucesso:
                     time_id_req = payload.get('time_id', time_id)
                     if time_id_req == 2:
                         mensagem = self._filtrar_campo_para_escavacao(mensagem)
-=======
-                # Registra cliente com time_id após login bem-sucedido
-                if tipo == 'LOGIN' and sucesso:
-                    # mensagem é a lista [id, nome, senha, time_id]
-                    time_id = mensagem[3]
-                    self._registrar_cliente(sock, time_id)
-
-                # Filtra FIELD_STATE para time de escavação antes de enviar
-                if tipo == 'GET_FIELD' and sucesso:
-                    time_id_req = payload.get('time_id', time_id)
-                    if time_id_req == 2:
-                        mensagem = self._filtrar_campo_escavacao(mensagem)
->>>>>>> Stashed changes
 
                 resposta   = {"success": sucesso, "type": tipo_resp, "payload": mensagem}
                 dados_resp = json.dumps(resposta).encode('utf-8')
                 sock.sendall(struct.pack('>I', len(dados_resp)) + dados_resp)
 
-                # Broadcast filtrado por time após ADD_STRUCTURE
                 if tipo == 'ADD_STRUCTURE' and sucesso:
                     linha  = payload.get("linha")
                     coluna = payload.get("coluna")
@@ -239,26 +156,18 @@ class ServidorRede:
             sock.close()
             print(f"[DESCONECTADO] {endereco} fechado.")
 
-<<<<<<< Updated upstream
     def _filtrar_campo_para_escavacao(self, mensagem: dict) -> dict:
         """Remove jogador_escondeu do campo antes de enviar ao time de escavação."""
         campo_filtrado = []
         for linha in mensagem.get("campo", []):
             linha_filtrada = []
             for celula in linha:
+                escondeu = celula["jogador_escondeu"] if celula["jogador_achou"] != -1 else -1
                 linha_filtrada.append({
-                    "jogador_escondeu": -1,           # oculto para escavação
+                    "jogador_escondeu": escondeu,
                     "jogador_achou":    celula["jogador_achou"],
                 })
             campo_filtrado.append(linha_filtrada)
-=======
-    def _filtrar_campo_escavacao(self, mensagem: dict) -> dict:
-        """Apaga jogador_escondeu de todo o campo antes de enviar ao time 2."""
-        campo_filtrado = [
-            [{"jogador_escondeu": -1, "jogador_achou": c["jogador_achou"]} for c in linha]
-            for linha in mensagem.get("campo", [])
-        ]
->>>>>>> Stashed changes
         return {**mensagem, "campo": campo_filtrado}
 
     def processar_comando(self, tipo, payload):
