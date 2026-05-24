@@ -22,14 +22,19 @@ class Campo:
             celula = self.campo[linha][coluna]
 
             if usuario['timeId'] == 1:
+                # Se já foi este jogador que escondeu, remove (toggle)
+                if celula.getJogadorEscondeu() == usuario['id']:
+                    celula.setJogadorEscondeu(-1)
+                    return True, "removed"
+                # Célula ocupada por outro jogador
                 if celula.getJogadorEscondeu() != -1:
-                    return False
+                    return False, "ocupada"
                 celula.setJogadorEscondeu(usuario['id'])
+                return True, "added"
             else:
                 if celula.getJogadorAchou() != -1:
-                    return False
+                    return False, "ocupada"
                 celula.setJogadorAchou(usuario['id'])
-
-            return True
+                return True, "added"
         finally:
             sem.release()

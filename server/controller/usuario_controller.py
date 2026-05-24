@@ -40,6 +40,9 @@ class UsuarioController:
                 return False, "ACTION_ERROR", "Fase de montagem encerrada — não é mais possível adicionar estruturas"
             return False, "ACTION_ERROR", "Célula já ocupada"
 
+        if motivo == "removed":
+            return True, "ACTION_SUCCESS", "Estrutura removida com sucesso"
+
         return True, "ACTION_SUCCESS", "Estrutura adicionada com sucesso"
 
     def obter_campo(self):

@@ -80,5 +80,5 @@ class Jogo:
         if time_id == 1 and fase_atual != "montagem":
             return False, "encerrada"
 
-        ok = self.campo.interacaoCampo(usuario, linha, coluna)
-        return ok, None
+        ok, motivo = self.campo.interacaoCampo(usuario, linha, coluna)
+        return ok, motivo  # ← antes retornava só ok, None
