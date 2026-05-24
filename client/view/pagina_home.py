@@ -5,7 +5,7 @@ from PyQt6.QtWidgets import (
 from PyQt6.QtCore import Qt, pyqtSignal, QTimer
 from PyQt6.QtGui import QFont
 
-TAMANHO_CAMPO = 20
+TAMANHO_CAMPO = 10
 
 COR_VAZIA    = "#d0d3d4"
 COR_ESCONDEU = "#e74c3c"
