@@ -29,10 +29,6 @@ class ControladorCliente(QObject):
 
         self._conectar_sinais_view()
 
-    # ------------------------------------------------------------------ #
-    #  View                                                                #
-    # ------------------------------------------------------------------ #
-
     def _conectar_sinais_view(self):
         if self.janela is None:
             return
@@ -51,10 +47,6 @@ class ControladorCliente(QObject):
                 pagina_home.requisitar_criar_celula.connect(self.clicar_celula)
             self.sinal_campo_atualizado.connect(pagina_home.atualizar_campo_completo)
             self.sinal_celula_atualizada.connect(pagina_home.atualizar_celula)
-
-    # ------------------------------------------------------------------ #
-    #  Ações do usuário                                                    #
-    # ------------------------------------------------------------------ #
 
     def processar_login(self, usuario: str, senha: str):
         if not usuario or not senha:
@@ -82,10 +74,6 @@ class ControladorCliente(QObject):
         mensagem = protocolo.criar_mensagem(protocolo.GET_FIELD, {"time_id": time_id})
         self.rede.enviar(mensagem)
 
-    # ------------------------------------------------------------------ #
-    #  Roteador de mensagens                                               #
-    # ------------------------------------------------------------------ #
-
     def _ao_receber_mensagem(self, dados: dict):
         tipo, payload = protocolo.parse_mensagem(dados)
         roteador = {
@@ -102,10 +90,6 @@ class ControladorCliente(QObject):
         else:
             print(f"[CTRL] Tipo de mensagem desconhecido: {tipo}")
 
-    # ------------------------------------------------------------------ #
-    #  Handlers de mensagens                                               #
-    # ------------------------------------------------------------------ #
-
     def _tratar_login_sucesso(self, payload: dict):
         self._definir_carregamento(False)
         self.estado.definir_jogador(payload)
@@ -121,11 +105,6 @@ class ControladorCliente(QObject):
                 )
 
         self.solicitar_campo()
-
-    def _tratar_login_erro(self, payload: dict):
-        self._definir_carregamento(False)
-        mensagem = payload.get("message", payload.get("mensagem", "Erro no login"))
-        self.sinal_login_erro.emit(mensagem)
 
     def _tratar_campo_completo(self, payload: dict):
         campo_dados = payload.get("campo", [])

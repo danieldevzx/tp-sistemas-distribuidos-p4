@@ -22,8 +22,6 @@ def inicializar_banco():
 
         conexao = obter_conexao()
         cursor = conexao.cursor()
-        
-        # executescript permite rodar múltiplas instruções separadas por ;
         cursor.executescript(script_sql)
         
         conexao.commit()

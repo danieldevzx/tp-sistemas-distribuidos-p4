@@ -149,25 +149,19 @@ class PaginaHome(QWidget):
             self._celulas.append(row)
         return container
 
-    # ------------------------------------------------------------------ #
-    #  Helpers internos                                                    #
-    # ------------------------------------------------------------------ #
-
     def _atualizar_banner(self, fase: str, tempo: int):
         self._fase = fase
         if fase == "montagem":
             self.banner.setStyleSheet(
                 "background-color: #e67e22; border-radius: 4px;")
-            self.lbl_fase.setText("⏳ Fase de Montagem")
+            self.lbl_fase.setText("Fase de Montagem")
             self.lbl_tempo.setText(f"{tempo}s")
             self.lbl_tempo.setVisible(True)
         else:
             self.banner.setStyleSheet(
                 "background-color: #27ae60; border-radius: 4px;")
-            self.lbl_fase.setText("⛏️  Fase de Escavação")
+            self.lbl_fase.setText("Fase de Escavação")
             self.lbl_tempo.setVisible(False)
-
-        # Habilita/desabilita células conforme o time e a fase
         self._atualizar_interatividade()
 
     def _atualizar_interatividade(self):
@@ -189,7 +183,7 @@ class PaginaHome(QWidget):
     def definir_info_jogador(self, nome: str, time_id: int):
         self._time_id = time_id
         self.lbl_jogador.setText(f"Jogador: {nome}")
-        nome_time = "Montagem 🔴" if time_id == 1 else "Escavação 🟢"
+        nome_time = "Montagem" if time_id == 1 else "Escavação"
         self.lbl_time.setText(f"Time: {nome_time}")
         self._atualizar_interatividade()
 

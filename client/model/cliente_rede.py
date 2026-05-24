@@ -58,7 +58,6 @@ class ClienteRede:
         with self._lock_envio:
             try:
                 dados = json.dumps(mensagem, ensure_ascii=False).encode('utf-8')
-                # ✅ Mesmo protocolo do servidor: 4 bytes de cabeçalho + corpo
                 cabecalho = struct.pack('>I', len(dados))
                 self.socket.sendall(cabecalho + dados)
                 return True
@@ -70,13 +69,11 @@ class ClienteRede:
         if not self.socket:
             return None
         try:
-            # ✅ Lê 4 bytes de cabeçalho
             cabecalho = self._receber_exato(4)
             if not cabecalho:
                 return None
             tamanho = struct.unpack('>I', cabecalho)[0]
 
-            # Lê o corpo completo
             corpo = self._receber_exato(tamanho)
             if not corpo:
                 return None

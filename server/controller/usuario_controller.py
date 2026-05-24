@@ -57,7 +57,6 @@ class UsuarioController:
                     "jogador_achou":    celula.getJogadorAchou(),
                 })
             serializado.append(linha_dados)
-        # Inclui fase e tempo no FIELD_STATE para o cliente sincronizar
         return True, "FIELD_STATE", {
             "campo": serializado,
             "fase": info["fase"],

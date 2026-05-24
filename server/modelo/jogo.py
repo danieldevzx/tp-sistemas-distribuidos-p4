@@ -1,7 +1,7 @@
 import threading
 from .campo import Campo
 
-DURACAO_FASE_MONTAGEM = 60  # segundos
+DURACAO_FASE_MONTAGEM = 60
 
 
 class Jogo:
@@ -11,12 +11,8 @@ class Jogo:
         self.tempo_restante = DURACAO_FASE_MONTAGEM
         self._lock_fase = threading.Lock()
         self._timer: threading.Timer | None = None
-        self._callback_tick = None          # chamado a cada segundo com o tempo restante
-        self._callback_fim_montagem = None  # chamado quando o tempo chega a 0
-
-    # ------------------------------------------------------------------ #
-    #  Fase                                                                #
-    # ------------------------------------------------------------------ #
+        self._callback_tick = None
+        self._callback_fim_montagem = None
 
     def iniciar_timer(self, callback_tick, callback_fim_montagem):
         self._callback_tick = callback_tick
@@ -34,8 +30,6 @@ class Jogo:
                 return
             self.tempo_restante -= 1
             tempo_atual = self.tempo_restante
-
-        # Avisa o servidor do novo tempo (broadcast para clientes)
         if self._callback_tick:
             threading.Thread(
                 target=self._callback_tick,
@@ -62,10 +56,6 @@ class Jogo:
         with self._lock_fase:
             return {"fase": self.fase, "tempo_restante": self.tempo_restante}
 
-    # ------------------------------------------------------------------ #
-    #  Campo                                                               #
-    # ------------------------------------------------------------------ #
-
     def getCampo(self):
         return self.campo
 
@@ -81,4 +71,4 @@ class Jogo:
             return False, "encerrada"
 
         ok, motivo = self.campo.interacaoCampo(usuario, linha, coluna)
-        return ok, motivo  # ← antes retornava só ok, None
+        return ok, motivo
