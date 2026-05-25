@@ -143,7 +143,7 @@ class ServidorRede:
                 dados_resp = json.dumps(resposta).encode('utf-8')
                 sock.sendall(struct.pack('>I', len(dados_resp)) + dados_resp)
 
-                if tipo == 'ADD_STRUCTURE' and sucesso:
+                if tipo == 'INTERACT_FIELD' and sucesso:
                     linha  = payload.get("linha")
                     coluna = payload.get("coluna")
                     celula = self.usuario_controller.jogo.getCampo().getCampo()[linha][coluna]
@@ -175,7 +175,7 @@ class ServidorRede:
             return self.usuario_controller.cadastrar(payload)
         elif tipo == 'LOGIN':
             return self.usuario_controller.autenticar(payload)
-        elif tipo == 'ADD_STRUCTURE':
+        elif tipo == 'INTERACT_FIELD':
             return self.usuario_controller.adicionar_estrutura(payload)
         elif tipo == 'GET_FIELD':
             return self.usuario_controller.obter_campo()

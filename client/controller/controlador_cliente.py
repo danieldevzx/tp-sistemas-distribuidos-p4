@@ -64,7 +64,7 @@ class ControladorCliente(QObject):
 
     def clicar_celula(self, linha: int, coluna: int):
         mensagem = protocolo.criar_mensagem(
-            protocolo.ADD_STRUCTURE,
+            protocolo.INTERACT_FIELD,
             {"usuario": asdict(self.estado.jogador_local), "linha": linha, "coluna": coluna}
         )
         self.rede.enviar(mensagem)

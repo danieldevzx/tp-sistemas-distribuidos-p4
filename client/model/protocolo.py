@@ -2,7 +2,7 @@
 LOGIN          = "LOGIN"
 REGISTER       = "REGISTER"
 GET_FIELD      = "GET_FIELD"
-ADD_STRUCTURE  = "ADD_STRUCTURE"
+INTERACT_FIELD  = "INTERACT_FIELD"
 
 # Tipos de resposta/broadcast (servidor / cliente)
 FIELD_STATE    = "FIELD_STATE"
