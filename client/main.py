@@ -7,12 +7,9 @@ from controller.controlador_cliente import ControladorCliente
 def principal():
     app = QApplication(sys.argv)
 
-
     janela = JanelaPrincipal()
 
-
     controlador = ControladorCliente(janela)
-
 
     app.aboutToQuit.connect(controlador.desconectar)
 

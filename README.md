@@ -1,22 +1,32 @@
-# Projeto de Sistemas Distribuídos - Socket TCP com MVC
+# Jogo de Escavação Distribuído - Pyro5 RMI com MVC
 
-Este projeto implementa um sistema distribuído de autenticação (Cadastro e Login) utilizando Python, Sockets TCP e uma arquitetura robusta baseada no padrão **MVC (Model-View-Controller)**.
+Este projeto implementa um sistema distribuído de jogo de escavação competitivo utilizando Python, **Pyro5 (Remote Method Invocation)** e uma arquitetura robusta baseada no padrão **MVC (Model-View-Controller)**.
+
+---
 
 ## 🏗️ Arquitetura do Sistema
 
-O projeto foi totalmente refatorado para seguir o padrão MVC em ambas as pontas (Cliente e Servidor), garantindo separação de responsabilidades e facilidade de manutenção.
+O projeto utiliza uma arquitetura baseada em RMI (Invocação de Método Remoto) para comunicação de rede, garantindo que o cliente e o servidor se comuniquem por meio de objetos distribuídos em vez de sockets de baixo nível.
 
 ### Cliente (PyQt6)
 
-- **Model (`client/model/`)**: Gerencia a conexão de rede (`ClienteRede`) e a tradução de mensagens. Não conhece a interface gráfica.
-- **View (`client/view/`)**: Contém as páginas (`Login`, `Registro`, `Home`) e componentes visuais reaproveitáveis. É responsável apenas por exibir dados e capturar eventos.
-- **Controller (`client/controller/`)**: O orquestrador. Recebe comandos da View, solicita dados ao Model e gerencia o **Worker** (Thread separada) para evitar que a interface trave durante requisições de rede.
+- **Model (`client/model/`)**:
+  - `ProxyServidor`: Gerencia a conexão com o Name Server e encapsula os proxies remotos do servidor.
+  - `CallbackCliente`: Objeto local exposto via Daemon Pyro que escuta os broadcasts do servidor.
+  - `EstadoJogo`: Controla o estado local do campo e a fase atual.
+- **View (`client/view/`)**: Páginas da interface gráfica (`Login`, `Registro`, `Home`). Apenas capturam interações de tela e renderizam atualizações de estado.
+- **Controller (`client/controller/`)**:
+  - `ControladorCliente`: Orquestra as requisições e processa os eventos recebidos do servidor.
+  - `WorkerRMI`: Thread secundária (`QThread`) para executar as chamadas RMI em background, evitando travar a interface visual. Gerencia dinamicamente a posse (`ownership`) do proxy Pyro5.
 
-### Servidor (Socket TCP + SQLite)
+### Servidor (Pyro5 Daemon + SQLite)
 
-- **Model (`server/modelo/`)**: Lida com a persistência de dados (`bd_base.py`, `usuario_modelo.py`) e scripts SQL.
-- **View (`server/view/`)**: No servidor, a "Visão" é a interface de rede (`servidor_rede.py`). Ela gerencia os Sockets e o protocolo de comunicação.
-- **Controller (`server/controller/`)**: Processa as regras de negócio de autenticação e decide quais dados o modelo deve salvar ou buscar.
+- **Model (`server/modelo/`)**: Gerencia a persistência com SQLite (`usuario_modelo.py`) e as regras lógicas de estado do tabuleiro e do timer (`jogo.py`).
+- **View (`server/main.py`)**: Ponto de entrada que inicializa o Daemon Pyro e registra os serviços no Name Server.
+- **Controller (`server/servico_usuario.py` & `server/servico_jogo.py`)**:
+  - Expostos remotamente via `@Pyro5.api.expose`.
+  - Processam requisições de autenticação e de interação com o tabuleiro.
+  - O `ServicoJogo` gerencia o envio de eventos (timer, fase, cliques) em tempo real via callbacks cadastrados pelos clientes ativos.
 
 ---
 
@@ -26,7 +36,7 @@ O projeto foi totalmente refatorado para seguir o padrão MVC em ambas as pontas
 > Antes de começar, certifique-se de que o **tutorial de instalação do Docker** foi concluído com sucesso.
 > Você pode acessar o guia de instalação aqui: [Tutorial de Instalação Docker](https://drive.google.com/file/d/1Mc_HCTId83ddrbjUc3VXW0WqBjn3bYFa/view?usp=sharing)
 
-Esta é a maneira recomendada, pois garante que todas as dependências do PyQt6 e do banco de dados estejam configuradas.
+Esta é a maneira recomendada, pois garante que todas as dependências do Pyro5, PyQt6 e do banco de dados estejam configuradas.
 
 ### 1. Permitir acesso ao Servidor X (Apenas Linux)
 
@@ -38,7 +48,7 @@ xhost +si:localuser:root
 
 ### 2. Iniciar o projeto
 
-Para compilar e iniciar o servidor e um cliente:
+Para construir e iniciar o Name Server, o Servidor de aplicação e um Cliente:
 
 ```bash
 docker-compose up --build
@@ -46,35 +56,29 @@ docker-compose up --build
 
 ### 3. Executar múltiplas instâncias do Cliente
 
-Para testar a concorrência do servidor com vários clientes simultâneos:
+Para testar a concorrência e o tempo real (callbacks) com múltiplos jogadores:
+
+Abra um novo terminal no host e execute instâncias adicionais do cliente usando:
 
 ```bash
-docker-compose up --scale client=3
+docker-compose run client
 ```
 
-_(Substitua `3` pelo número desejado de instâncias)_
+*Cada cliente executado desta forma abrirá uma nova janela Qt e criará automaticamente seu próprio daemon de callback em seu respectivo IP na rede interna do Docker.*
 
 ### 4. Parando os containers
 
-Para encerrar o projeto, você pode usar `Ctrl + C` no terminal onde o Docker está rodando. Se preferir, use:
+Para encerrar o projeto, você pode usar `Ctrl + C` no terminal principal do compose. Se preferir, use:
 
 ```bash
 docker-compose down
 ```
 
-Caso os containers não fechem corretamente (comum em alguns ambientes com PyQt6), você pode forçar a parada utilizando:
-
-```bash
-sudo docker container stop template-sd-server-1 template-sd-db-init-1 template-sd-client-2 template-sd-client-N
-```
-
-*(Nota: Substitua `template-sd-client-N` pelos nomes/IDs reais dos containers caso tenha escalado para mais instâncias)*
-
 ---
 
 ## 🗄️ Visualizando o Banco de Dados (DBeaver)
 
-Para visualizar e gerenciar os dados salvos no projeto (como a tabela de usuários), recomendamos o uso do **DBeaver**.
+Para visualizar e gerenciar a tabela de usuários persistidos pelo SQLite, recomendamos o uso do **DBeaver**.
 
 > [!TIP]
 > Preparamos um guia passo a passo de como configurar e conectar o DBeaver ao banco de dados `sistema.db` deste projeto:
@@ -82,28 +86,27 @@ Para visualizar e gerenciar os dados salvos no projeto (como a tabela de usuári
 
 ---
 
-## 📡 Protocolo de Comunicação
+## 📡 Comunicação e Protocolo (RMI)
 
-A comunicação utiliza **Sockets TCP** com um protocolo de mensagem estruturado:
+A comunicação utiliza a biblioteca **Pyro5** com a seguinte distribuição:
 
-1.  **Cabeçalho (4 bytes)**: Um inteiro Big-endian representando o tamanho do corpo da mensagem.
-2.  **Corpo (JSON)**: Dados da requisição ou resposta codificados em UTF-8.
+1. **Name Server (Porta 9090)**: Centraliza a tabela de nomes e suas URIs Pyro.
+2. **Serviços Remotos**:
+   - `servidor.usuario`: Gerencia cadastro e login.
+   - `servidor.jogo`: Gerencia o tabuleiro, o timer e a lista de callbacks registrados.
+3. **Callbacks (Notificações)**:
+   - Cada cliente abre uma escuta dinâmica e se cadastra no servidor.
+   - O servidor realiza chamadas remotas unidirecionais para notificar mudanças de ticks de tempo, interações com células e transições de fase.
 
-**Exemplo de fluxo:**
-
-- O Cliente envia o tamanho (4 bytes) + JSON de Login.
-- O Servidor lê o tamanho, recebe o JSON, processa no Controller e devolve tamanho + JSON de Resposta.
-
-> [!NOTE]
-> Para entender mais sobre a implementação de Sockets em Python, veja a [Documentação Oficial de Sockets](https://docs.python.org/3/library/socket.html).
+Para mais detalhes sobre as decisões e conceitos de arquitetura dessa migração, leia o guia em [MIGRACAO_PYRO5.md](MIGRACAO_PYRO5.md).
 
 ---
 
 ## 🛠️ Tecnologias Utilizadas
 
 - **Python 3.10** ([Documentação](https://docs.python.org/3.10/))
+- **Pyro5** ([Documentação](https://pyro5.readthedocs.io/))
 - **PyQt6** ([Documentação](https://www.riverbankcomputing.com/static/Docs/PyQt6/))
 - **SQLite3** ([Documentação](https://www.sqlite.org/docs.html))
 - **Docker & Docker Compose** ([Guia de Instalação](https://drive.google.com/file/d/1Mc_HCTId83ddrbjUc3VXW0WqBjn3bYFa/view?usp=sharing))
 - **DBeaver** ([Guia de Uso](https://drive.google.com/file/d/1Z7i3VpFkK7frqA6rWSgvmAlDWp4Fm9uV/view?usp=sharing))
-- **Socket & Threading** ([Documentação Sockets](https://docs.python.org/3/library/socket.html))

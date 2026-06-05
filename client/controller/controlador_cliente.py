@@ -1,10 +1,11 @@
 import os
+import socket
 from PyQt6.QtCore import QObject, pyqtSignal
 from PyQt6.QtWidgets import QMessageBox
-from model.cliente_rede import ClienteRede
+from model.proxy_servidor import ProxyServidor
+from model.callback_cliente import SinaisCallback, DaemonCallback
 from model.estado_jogo import EstadoJogo
-from model import protocolo
-from controller.worker import WorkerRequisicao, WorkerListener
+from controller.worker import WorkerRMI
 from dataclasses import asdict
 
 
@@ -19,15 +20,17 @@ class ControladorCliente(QObject):
         super().__init__(parent)
         self.janela = janela
 
-        host = os.environ.get('SERVER_HOST', 'localhost')
-        porta = int(os.environ.get('SERVER_PORT', 5000))
-        self.rede = ClienteRede(host=host, porta=porta)
+        self.proxy = ProxyServidor()
         self.estado = EstadoJogo()
 
-        self._worker_requisicao: WorkerRequisicao | None = None
-        self._worker_listener: WorkerListener | None = None
+        # Callback Pyro para broadcasts
+        self._sinais_callback = SinaisCallback()
+        self._daemon_callback = DaemonCallback(self._sinais_callback)
+
+        self._worker: WorkerRMI | None = None
 
         self._conectar_sinais_view()
+        self._conectar_sinais_callback()
 
     def _conectar_sinais_view(self):
         if self.janela is None:
@@ -48,52 +51,85 @@ class ControladorCliente(QObject):
             self.sinal_campo_atualizado.connect(pagina_home.atualizar_campo_completo)
             self.sinal_celula_atualizada.connect(pagina_home.atualizar_celula)
 
+    def _conectar_sinais_callback(self):
+        """Conecta sinais do callback aos handlers da UI."""
+        self._sinais_callback.sinal_tick.connect(self._tratar_tick_tempo)
+        self._sinais_callback.sinal_field_update.connect(self._tratar_campo_parcial)
+        self._sinais_callback.sinal_phase_change.connect(self._tratar_mudanca_fase)
+
+    # --- Ações do usuário ---
+
     def processar_login(self, usuario: str, senha: str):
         if not usuario or not senha:
             QMessageBox.warning(self.janela, "Erro", "Por favor, preencha todos os campos")
             return
         self._definir_carregamento(True)
-        self._iniciar_requisicao(protocolo.LOGIN, {"username": usuario, "password": senha})
+
+        if not self.proxy.esta_conectado:
+            if not self.proxy.conectar():
+                self._definir_carregamento(False)
+                QMessageBox.warning(self.janela, "Erro", "Não foi possível conectar ao servidor")
+                return
+
+        self._iniciar_requisicao(
+            self.proxy.usuario.autenticar, usuario, senha,
+            callback_sucesso=self._ao_login_sucesso,
+        )
 
     def processar_registro(self, usuario: str, senha: str):
         if not usuario or not senha:
             QMessageBox.warning(self.janela, "Erro", "Por favor, preencha todos os campos")
             return
         self._definir_carregamento(True)
-        self._iniciar_requisicao(protocolo.REGISTER, {"username": usuario, "password": senha})
+
+        if not self.proxy.esta_conectado:
+            if not self.proxy.conectar():
+                self._definir_carregamento(False)
+                QMessageBox.warning(self.janela, "Erro", "Não foi possível conectar ao servidor")
+                return
+
+        self._iniciar_requisicao(
+            self.proxy.usuario.cadastrar, usuario, senha,
+            callback_sucesso=self._ao_registro_sucesso,
+        )
 
     def clicar_celula(self, linha: int, coluna: int):
-        mensagem = protocolo.criar_mensagem(
-            protocolo.INTERACT_FIELD,
-            {"usuario": asdict(self.estado.jogador_local), "linha": linha, "coluna": coluna}
+        usuario_dict = asdict(self.estado.jogador_local)
+        self._iniciar_requisicao(
+            self.proxy.jogo.interacao_campo, usuario_dict, linha, coluna,
+            callback_sucesso=self._ao_interacao_sucesso,
         )
-        self.rede.enviar(mensagem)
 
     def solicitar_campo(self):
         time_id = self.estado.jogador_local.timeId if self.estado.jogador_local else -1
-        mensagem = protocolo.criar_mensagem(protocolo.GET_FIELD, {"time_id": time_id})
-        self.rede.enviar(mensagem)
+        self._iniciar_requisicao(
+            self.proxy.jogo.obter_campo, time_id,
+            callback_sucesso=self._ao_campo_recebido,
+        )
 
-    def _ao_receber_mensagem(self, dados: dict):
-        tipo, payload = protocolo.parse_mensagem(dados)
-        roteador = {
-            protocolo.FIELD_STATE:    self._tratar_campo_completo,
-            protocolo.FIELD_UPDATE:   self._tratar_campo_parcial,
-            protocolo.ACTION_SUCCESS: self._tratar_acao_sucesso,
-            protocolo.ACTION_ERROR:   self._tratar_acao_erro,
-            protocolo.PHASE_CHANGE:   self._tratar_mudanca_fase,
-            protocolo.TIMER_TICK:     self._tratar_tick_tempo,
-        }
-        handler = roteador.get(tipo)
-        if handler:
-            handler(payload)
-        else:
-            print(f"[CTRL] Tipo de mensagem desconhecido: {tipo}")
+    # --- Handlers de resposta ---
 
-    def _tratar_login_sucesso(self, payload: dict):
+    def _ao_login_sucesso(self, resultado):
         self._definir_carregamento(False)
-        self.estado.definir_jogador(payload)
+        sucesso, dados = resultado
+
+        if not sucesso:
+            QMessageBox.warning(self.janela, "Erro", str(dados))
+            return
+
+        self.estado.definir_jogador(dados)
         self.estado.conectado = True
+
+        # Iniciar callback do cliente (com IP real)
+        callback_host = os.environ.get("CALLBACK_HOST", "0.0.0.0")
+        callback_nathost = socket.gethostbyname(socket.gethostname())
+        callback_uri = self._daemon_callback.iniciar(
+            host=callback_host, nathost=callback_nathost
+        )
+
+        # Registrar callback e reivindicar ownership do proxy
+        self.proxy.transferir_ownership()
+        self.proxy.jogo.registrar_callback(callback_uri, self.estado.jogador_local.timeId)
 
         if self.janela and hasattr(self.janela, 'mudar_pagina'):
             self.janela.mudar_pagina(2)
@@ -106,10 +142,24 @@ class ControladorCliente(QObject):
 
         self.solicitar_campo()
 
-    def _tratar_campo_completo(self, payload: dict):
-        campo_dados = payload.get("campo", [])
-        self.estado.fase = payload.get("fase", self.estado.fase)
-        self.estado.tempo_restante = payload.get("tempo_restante", self.estado.tempo_restante)
+    def _ao_registro_sucesso(self, resultado):
+        self._definir_carregamento(False)
+        sucesso, dados = resultado
+
+        if sucesso:
+            QMessageBox.information(self.janela, "Sucesso", str(dados))
+            if self.janela and hasattr(self.janela, 'mudar_pagina'):
+                self.janela.mudar_pagina(0)
+        else:
+            QMessageBox.warning(self.janela, "Erro", str(dados))
+
+        self.proxy.transferir_ownership()
+        self.proxy.desconectar()
+
+    def _ao_campo_recebido(self, resultado):
+        campo_dados = resultado.get("campo", [])
+        self.estado.fase = resultado.get("fase", self.estado.fase)
+        self.estado.tempo_restante = resultado.get("tempo_restante", self.estado.tempo_restante)
 
         self.sinal_campo_atualizado.emit(campo_dados)
 
@@ -117,95 +167,58 @@ class ControladorCliente(QObject):
         if pagina_home and hasattr(pagina_home, 'atualizar_fase'):
             pagina_home.atualizar_fase(self.estado.fase, self.estado.tempo_restante)
 
-    def _tratar_campo_parcial(self, payload: dict):
-        linha  = payload.get("linha", -1)
-        coluna = payload.get("coluna", -1)
-        self.sinal_celula_atualizada.emit(linha, coluna, payload)
+    def _ao_interacao_sucesso(self, resultado):
+        sucesso, mensagem = resultado
+        if not sucesso:
+            QMessageBox.warning(self.janela, "Erro", mensagem)
 
-    def _tratar_tick_tempo(self, payload: dict):
-        tempo = payload.get("tempo_restante", 0)
-        self.estado.tempo_restante = tempo
+    # --- Handlers de callback (broadcasts do servidor) ---
+
+    def _tratar_tick_tempo(self, tempo_restante: int):
+        self.estado.tempo_restante = tempo_restante
         pagina_home = getattr(self.janela, 'pagina_home', None)
         if pagina_home and hasattr(pagina_home, 'atualizar_tempo'):
-            pagina_home.atualizar_tempo(tempo)
+            pagina_home.atualizar_tempo(tempo_restante)
 
-    def _tratar_mudanca_fase(self, payload: dict):
-        fase  = payload.get("fase", "escavacao")
-        tempo = payload.get("tempo_restante", 0)
+    def _tratar_campo_parcial(self, linha: int, coluna: int, dados: dict):
+        self.sinal_celula_atualizada.emit(linha, coluna, dados)
+
+    def _tratar_mudanca_fase(self, fase: str, tempo: int):
         self.estado.fase = fase
         self.estado.tempo_restante = tempo
         pagina_home = getattr(self.janela, 'pagina_home', None)
         if pagina_home and hasattr(pagina_home, 'atualizar_fase'):
             pagina_home.atualizar_fase(fase, tempo)
 
-    def _tratar_acao_sucesso(self, payload: dict):
-        QMessageBox.information(self.janela, "Status", payload)
-
-    def _tratar_acao_erro(self, payload: dict):
-        QMessageBox.warning(self.janela, "Status", payload)
-
-    def _ao_desconectar(self):
-        self.estado.conectado = False
-        print("[CTRL] Conexão perdida com o servidor.")
-        if self.rede.reconectar():
-            self.estado.conectado = True
-            self._iniciar_listener()
-            self.solicitar_campo()
-        else:
-            print("[CTRL] Não foi possível reconectar.")
+    # --- Lifecycle ---
 
     def desconectar(self):
-        # Encerra a sessão
-        if self._worker_listener:
-            self._worker_listener.parar()
-            self._worker_listener.wait(3000)
-            self._worker_listener = None
+        """Encerra sessão do cliente."""
+        self.proxy.transferir_ownership()
+        callback_uri = self._daemon_callback.uri
+        if callback_uri and self.proxy.esta_conectado:
+            try:
+                self.proxy.jogo.remover_callback(callback_uri)
+            except Exception:
+                pass
 
-        self.rede.fechar()
+        self._daemon_callback.parar()
+        self.proxy.desconectar()
         self.estado.resetar()
-        self.estado.conectado = False
 
-    def _iniciar_requisicao(self, tipo: str, payload: dict):
-        self._worker_requisicao = WorkerRequisicao(self.rede, tipo, payload)
-        self._worker_requisicao.sinal_resultado.connect(
-            lambda resp: self._ao_receber_resposta_oneshot(tipo, resp)
-        )
-        self._worker_requisicao.sinal_erro.connect(self._ao_erro_requisicao)
-        self._worker_requisicao.start()
+    # --- Utilitários ---
 
-    def _ao_receber_resposta_oneshot(self, tipo_original: str, resposta: dict):
-        _, payload = protocolo.parse_mensagem(resposta)
-
-        self._definir_carregamento(False)
-
-        if tipo_original == protocolo.LOGIN:
-            if resposta["success"]:
-                self._tratar_login_sucesso(payload)
-                self._iniciar_listener()
-            else:
-                self.sinal_login_erro.emit(resposta.get("message", "Erro no login"))
-
-        elif tipo_original == protocolo.REGISTER:
-            if resposta["success"]:
-                self.sinal_registro_sucesso.emit(resposta.get("message", "Registrado"))
-                if self.janela and hasattr(self.janela, 'mudar_pagina'):
-                    self.janela.mudar_pagina(0)
-            else:
-                self.sinal_registro_erro.emit(resposta.get("message", "Erro no registro"))
-            self.rede.fechar()
+    def _iniciar_requisicao(self, funcao, *args, callback_sucesso=None):
+        """Executa chamada RMI em background."""
+        self._worker = WorkerRMI(self.proxy, funcao, *args)
+        if callback_sucesso:
+            self._worker.sinal_resultado.connect(callback_sucesso)
+        self._worker.sinal_erro.connect(self._ao_erro_requisicao)
+        self._worker.start()
 
     def _ao_erro_requisicao(self, mensagem: str):
         self._definir_carregamento(False)
-        self.sinal_login_erro.emit(mensagem)
-
-    def _iniciar_listener(self):
-        if self._worker_listener and self._worker_listener.isRunning():
-            return
-        self._worker_listener = WorkerListener(self.rede)
-        self._worker_listener.mensagem_recebida.connect(self._ao_receber_mensagem)
-        self._worker_listener.desconectado.connect(self._ao_desconectar)
-        self._worker_listener.start()
-        print("[CTRL] Listener de mensagens iniciado.")
+        QMessageBox.warning(self.janela, "Erro", mensagem)
 
     def _definir_carregamento(self, carregando: bool):
         if self.janela and hasattr(self.janela, 'definir_carregamento'):
