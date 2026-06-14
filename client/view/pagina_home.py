@@ -26,21 +26,33 @@ class CelulaWidget(QPushButton):
         self._aplicar_estilo(COR_VAZIA)
         self.clicked.connect(lambda: self.clicada.emit(self.linha, self.coluna))
 
-    def atualizar(self, jogador_escondeu: int, jogador_achou: int):
+    def atualizar(self, jogador_escondeu: int, jogador_achou: int, vizinhos: int = -1):
         cor = COR_VAZIA
+        texto = ""
+        cor_texto = "black"
         if jogador_escondeu != -1 and jogador_achou != -1:
             cor = COR_AMBOS
         elif jogador_escondeu != -1:
             cor = COR_ESCONDEU
         elif jogador_achou != -1:
-            cor = COR_ACHOU
+            cor = "#eaeded"
+            if vizinhos >= 0:
+                texto = str(vizinhos) if vizinhos > 0 else ""
+                self.setFont(QFont("Arial", 10, QFont.Weight.Bold))
+                cor_texto = "#2e4053"
+                if vizinhos == 1: cor_texto = "#2980b9"
+                elif vizinhos == 2: cor_texto = "#27ae60"
+                elif vizinhos == 3: cor_texto = "#c0392b"
+                elif vizinhos >= 4: cor_texto = "#8e44ad"
         
-        self._aplicar_estilo(cor)
+        self.setText(texto)
+        self._aplicar_estilo(cor, cor_texto)
 
-    def _aplicar_estilo(self, cor: str):
+    def _aplicar_estilo(self, cor: str, cor_texto: str = "black"):
         self.setStyleSheet(f"""
             QPushButton {{
                 background-color: {cor};
+                color: {cor_texto};
                 border: 1px solid rgba(0,0,0,0.15);
                 border-radius: 2px;
             }}
@@ -50,6 +62,7 @@ class CelulaWidget(QPushButton):
 
 class PaginaHome(QWidget):
     requisitar_criar_celula = pyqtSignal(int, int)
+    requisitar_reiniciar = pyqtSignal()
 
     def __init__(self):
         super().__init__()
@@ -76,10 +89,34 @@ class PaginaHome(QWidget):
         self.lbl_jogador.setStyleSheet(
             "font-size: 14px; font-weight: bold; color: #2c3e50;")
 
+        self.lbl_contadores = QLabel("")
+        self.lbl_contadores.setStyleSheet(
+            "font-size: 13px; font-weight: bold; color: #34495e;")
+
+        self.btn_reiniciar = QPushButton("Reiniciar")
+        self.btn_reiniciar.setStyleSheet("""
+            QPushButton {
+                background-color: #3498db;
+                color: white;
+                font-weight: bold;
+                border-radius: 4px;
+                padding: 4px 8px;
+            }
+            QPushButton:disabled {
+                background-color: #bdc3c7;
+            }
+        """)
+        self.btn_reiniciar.setEnabled(False)
+        self.btn_reiniciar.clicked.connect(self.requisitar_reiniciar.emit)
+
         self.lbl_time = QLabel("Time: —")
         self.lbl_time.setStyleSheet("font-size: 13px; color: #7f8c8d;")
 
         layout.addWidget(self.lbl_jogador)
+        layout.addStretch()
+        layout.addWidget(self.lbl_contadores)
+        layout.addStretch()
+        layout.addWidget(self.btn_reiniciar)
         layout.addStretch()
         layout.addWidget(self.lbl_time)
         return container
@@ -157,11 +194,20 @@ class PaginaHome(QWidget):
             self.lbl_fase.setText("Fase de Montagem")
             self.lbl_tempo.setText(f"{tempo}s")
             self.lbl_tempo.setVisible(True)
-        else:
+            self.btn_reiniciar.setEnabled(False)
+        elif fase == "escavacao":
             self.banner.setStyleSheet(
                 "background-color: #27ae60; border-radius: 4px;")
             self.lbl_fase.setText("Fase de Escavação")
+            self.lbl_tempo.setText(f"{tempo}s")
+            self.lbl_tempo.setVisible(True)
+            self.btn_reiniciar.setEnabled(False)
+        else:
+            self.banner.setStyleSheet(
+                "background-color: #7f8c8d; border-radius: 4px;")
+            self.lbl_fase.setText("Jogo Finalizado")
             self.lbl_tempo.setVisible(False)
+            self.btn_reiniciar.setEnabled(True)
         self._atualizar_interatividade()
 
     def _atualizar_interatividade(self):
@@ -193,7 +239,7 @@ class PaginaHome(QWidget):
 
     def atualizar_tempo(self, tempo_restante: int):
         """Atualiza só o contador sem mudar a fase."""
-        if self._fase == "montagem":
+        if self._fase in ("montagem", "escavacao"):
             self.lbl_tempo.setText(f"{tempo_restante}s")
 
     def atualizar_campo_completo(self, dados: list):
@@ -203,6 +249,7 @@ class PaginaHome(QWidget):
                     self._celulas[i][j].atualizar(
                         cd.get("jogador_escondeu", -1),
                         cd.get("jogador_achou",    -1),
+                        cd.get("vizinhos",         -1),
                     )
 
     def atualizar_celula(self, linha: int, coluna: int, dados: dict):
@@ -210,4 +257,18 @@ class PaginaHome(QWidget):
             self._celulas[linha][coluna].atualizar(
                 dados.get("jogador_escondeu", -1),
                 dados.get("jogador_achou",    -1),
+                dados.get("vizinhos",         -1),
             )
+
+    def atualizar_contadores(self, tentativas_restantes: int, max_tentativas: int, max_estruturas: int, estruturas_escondidas: int, estruturas_encontradas: int, ganhador: int | None):
+        if self._fase == "montagem":
+            self.lbl_contadores.setText(f"Estruturas: {estruturas_escondidas} / {max_estruturas}")
+        elif self._fase == "escavacao":
+            self.lbl_contadores.setText(f"Tentativas: {tentativas_restantes} / {max_tentativas} | Achados: {estruturas_encontradas} / {estruturas_escondidas}")
+        elif self._fase == "finalizado":
+            vencedor_txt = "Empate"
+            if ganhador == 1:
+                vencedor_txt = "Time 1 Venceu"
+            elif ganhador == 2:
+                vencedor_txt = "Time 2 Venceu"
+            self.lbl_contadores.setText(f"Fim de Jogo! Vencedor: {vencedor_txt}")

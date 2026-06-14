@@ -48,6 +48,8 @@ class ControladorCliente(QObject):
         if pagina_home:
             if hasattr(pagina_home, 'requisitar_criar_celula'):
                 pagina_home.requisitar_criar_celula.connect(self.clicar_celula)
+            if hasattr(pagina_home, 'requisitar_reiniciar'):
+                pagina_home.requisitar_reiniciar.connect(self.reiniciar_jogo)
             self.sinal_campo_atualizado.connect(pagina_home.atualizar_campo_completo)
             self.sinal_celula_atualizada.connect(pagina_home.atualizar_celula)
 
@@ -56,6 +58,8 @@ class ControladorCliente(QObject):
         self._sinais_callback.sinal_tick.connect(self._tratar_tick_tempo)
         self._sinais_callback.sinal_field_update.connect(self._tratar_campo_parcial)
         self._sinais_callback.sinal_phase_change.connect(self._tratar_mudanca_fase)
+        self._sinais_callback.sinal_team_assigned.connect(self._tratar_novo_time)
+
 
     # --- Ações do usuário ---
 
@@ -160,12 +164,28 @@ class ControladorCliente(QObject):
         campo_dados = resultado.get("campo", [])
         self.estado.fase = resultado.get("fase", self.estado.fase)
         self.estado.tempo_restante = resultado.get("tempo_restante", self.estado.tempo_restante)
+        self.estado.tentativas_restantes = resultado.get("tentativas_restantes", self.estado.tentativas_restantes)
+        self.estado.max_tentativas = resultado.get("max_tentativas", self.estado.max_tentativas)
+        self.estado.max_estruturas = resultado.get("max_estruturas", self.estado.max_estruturas)
+        self.estado.estruturas_escondidas = resultado.get("estruturas_escondidas", self.estado.estruturas_escondidas)
+        self.estado.estruturas_encontradas = resultado.get("estruturas_encontradas", self.estado.estruturas_encontradas)
+        self.estado.ganhador = resultado.get("ganhador", self.estado.ganhador)
 
         self.sinal_campo_atualizado.emit(campo_dados)
 
         pagina_home = getattr(self.janela, 'pagina_home', None)
-        if pagina_home and hasattr(pagina_home, 'atualizar_fase'):
-            pagina_home.atualizar_fase(self.estado.fase, self.estado.tempo_restante)
+        if pagina_home:
+            if hasattr(pagina_home, 'atualizar_fase'):
+                pagina_home.atualizar_fase(self.estado.fase, self.estado.tempo_restante)
+            if hasattr(pagina_home, 'atualizar_contadores'):
+                pagina_home.atualizar_contadores(
+                    self.estado.tentativas_restantes,
+                    self.estado.max_tentativas,
+                    self.estado.max_estruturas,
+                    self.estado.estruturas_escondidas,
+                    self.estado.estruturas_encontradas,
+                    self.estado.ganhador
+                )
 
     def _ao_interacao_sucesso(self, resultado):
         sucesso, mensagem = resultado
@@ -181,14 +201,84 @@ class ControladorCliente(QObject):
             pagina_home.atualizar_tempo(tempo_restante)
 
     def _tratar_campo_parcial(self, linha: int, coluna: int, dados: dict):
+        if "tentativas_restantes" in dados:
+            self.estado.tentativas_restantes = dados["tentativas_restantes"]
+        if "estruturas_escondidas" in dados:
+            self.estado.estruturas_escondidas = dados["estruturas_escondidas"]
+        if "estruturas_encontradas" in dados:
+            self.estado.estruturas_encontradas = dados["estruturas_encontradas"]
+
         self.sinal_celula_atualizada.emit(linha, coluna, dados)
+
+        pagina_home = getattr(self.janela, 'pagina_home', None)
+        if pagina_home and hasattr(pagina_home, 'atualizar_contadores'):
+            pagina_home.atualizar_contadores(
+                self.estado.tentativas_restantes,
+                self.estado.max_tentativas,
+                self.estado.max_estruturas,
+                self.estado.estruturas_escondidas,
+                self.estado.estruturas_encontradas,
+                self.estado.ganhador
+            )
 
     def _tratar_mudanca_fase(self, fase: str, tempo: int):
         self.estado.fase = fase
-        self.estado.tempo_restante = tempo
+        if fase == "finalizado":
+            self.estado.ganhador = tempo
+            self.estado.tempo_restante = 0
+        else:
+            self.estado.tempo_restante = tempo
+            self.estado.ganhador = None
+
         pagina_home = getattr(self.janela, 'pagina_home', None)
-        if pagina_home and hasattr(pagina_home, 'atualizar_fase'):
-            pagina_home.atualizar_fase(fase, tempo)
+        if pagina_home:
+            if hasattr(pagina_home, 'atualizar_fase'):
+                pagina_home.atualizar_fase(fase, self.estado.tempo_restante)
+            if hasattr(pagina_home, 'atualizar_contadores'):
+                pagina_home.atualizar_contadores(
+                    self.estado.tentativas_restantes,
+                    self.estado.max_tentativas,
+                    self.estado.max_estruturas,
+                    self.estado.estruturas_escondidas,
+                    self.estado.estruturas_encontradas,
+                    self.estado.ganhador
+                )
+
+        if fase == "finalizado":
+            self._mostrar_dialogo_fim_jogo(self.estado.ganhador)
+        elif fase == "montagem":
+            self.solicitar_campo()
+
+    def _mostrar_dialogo_fim_jogo(self, ganhador: int | None):
+        if self.janela is None:
+            return
+        
+        mensagem = "O jogo terminou em empate!"
+        if ganhador == 1:
+            mensagem = "Fim de Jogo! O Time de Montagem (Time 1) venceu!"
+        elif ganhador == 2:
+            mensagem = "Fim de Jogo! O Time de Escavação (Time 2) venceu!"
+
+        QMessageBox.information(self.janela, "Fim de Jogo", mensagem)
+
+    def reiniciar_jogo(self):
+        """Dispara a solicitação RMI de reiniciar o jogo no servidor."""
+        self._iniciar_requisicao(
+            self.proxy.jogo.resetar_jogo
+        )
+
+    def _tratar_novo_time(self, time_id: int):
+        """Trata reatribuição de time recebida via callback."""
+        if self.estado.jogador_local:
+            self.estado.jogador_local.timeId = time_id
+            pagina_home = getattr(self.janela, 'pagina_home', None)
+            if pagina_home and hasattr(pagina_home, 'definir_info_jogador'):
+                pagina_home.definir_info_jogador(
+                    self.estado.jogador_local.nome,
+                    time_id
+                )
+
+
 
     # --- Lifecycle ---
 

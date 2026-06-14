@@ -9,6 +9,7 @@ class SinaisCallback(QObject):
     sinal_tick = pyqtSignal(int)
     sinal_field_update = pyqtSignal(int, int, dict)
     sinal_phase_change = pyqtSignal(str, int)
+    sinal_team_assigned = pyqtSignal(int)
 
 
 @Pyro5.api.expose
@@ -26,6 +27,10 @@ class CallbackCliente:
 
     def on_phase_change(self, fase: str, tempo: int):
         self._sinais.sinal_phase_change.emit(fase, tempo)
+
+    def on_team_assigned(self, time_id: int):
+        self._sinais.sinal_team_assigned.emit(time_id)
+
 
 
 class DaemonCallback:

@@ -18,5 +18,8 @@ class ServicoUsuario:
             return False, "Usuário e senha são obrigatórios"
         resultado = UsuarioModelo.buscar_por_credenciais(usuario, senha)
         if resultado:
-            return True, list(resultado)
+            dados = list(resultado)
+            dados[3] = random.randint(1, 2)
+            return True, dados
         return False, "Usuário ou senha inválidos"
+

@@ -36,3 +36,22 @@ class Campo:
                 return True, "added"
         finally:
             sem.release()
+
+    def contar_escondidos(self) -> int:
+        return sum(1 for linha in self.campo for celula in linha if celula.getJogadorEscondeu() != -1)
+
+    def contar_achados(self) -> int:
+        return sum(
+            1 for linha in self.campo for celula in linha
+            if celula.getJogadorAchou() != -1 and celula.getJogadorEscondeu() != -1
+        )
+
+    def calcular_vizinhos(self, linha: int, coluna: int) -> int:
+        count = 0
+        for i in range(max(0, linha - 1), min(10, linha + 2)):
+            for j in range(max(0, coluna - 1), min(10, coluna + 2)):
+                if i == linha and j == coluna:
+                    continue
+                if self.campo[i][j].getJogadorEscondeu() != -1:
+                    count += 1
+        return count
