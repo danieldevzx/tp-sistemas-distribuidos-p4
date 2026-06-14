@@ -27,7 +27,7 @@ class PaginaLogin(QWidget):
         sidebar_layout.setSpacing(12)
         sidebar_layout.setAlignment(Qt.AlignmentFlag.AlignTop)
         
-        titulo_jogo = QLabel("JOGO DA BOMBA")
+        titulo_jogo = QLabel("CAMPO DE ESCAVAÇÃO")
         titulo_jogo.setStyleSheet("font-size: 20px; font-weight: bold; color: #ecf0f1;")
         
         subtitulo = QLabel("Campo de Escavação Cooperativo")
@@ -41,18 +41,18 @@ class PaginaLogin(QWidget):
             "<p style='color: #ecf0f1; font-weight: bold; font-size: 12px; margin-top: 5px;'>COMO JOGAR:</p>"
             "<hr style='border: 0; border-top: 1px solid #34495e; margin: 4px 0;'>"
             "<p style='color: #bdc3c7; font-size: 11px; line-height: 140%;'>"
-            "<b>👥 Equipes:</b> Ao logar, você recebe um time aleatório: <b>Montagem (1)</b> ou <b>Escavação (2)</b>."
+            "<b>Equipes:</b> Ao logar, você recebe um time aleatório: <b>Montagem (1)</b> ou <b>Escavação (2)</b>."
             "</p>"
             "<p style='color: #bdc3c7; font-size: 11px; line-height: 140%;'>"
-            "<b>🔧 Fase 1 - Montagem (Time 1):</b><br>"
+            "<b>Fase 1 - Montagem (Time 1):</b><br>"
             "Tem 60s para esconder até 10 estruturas (tesouros) clicando no campo."
             "</p>"
             "<p style='color: #bdc3c7; font-size: 11px; line-height: 140%;'>"
-            "<b>⛏️ Fase 2 - Escavação (Time 2):</b><br>"
+            "<b>Fase 2 - Escavação (Time 2):</b><br>"
             "Tem 20 tentativas para achar os tesouros. Células vazias revelam o número de tesouros vizinhos (0 a 8)."
             "</p>"
             "<p style='color: #bdc3c7; font-size: 11px; line-height: 140%;'>"
-            "<b>🏆 Vitória:</b><br>"
+            "<b>Vitória:</b><br>"
             "• Time 2 vence ao achar todos os tesouros.<br>"
             "• Time 1 vence se o tempo ou as tentativas do Time 2 acabarem."
             "</p>"
