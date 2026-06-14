@@ -8,7 +8,7 @@ class JanelaPrincipal(QMainWindow):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("Projeto SD - Campo de Escavação")
-        self.setFixedSize(600, 600)
+        self.setFixedSize(700, 600)
         
         self.pilha = QStackedWidget()
         self.pagina_login = PaginaLogin()
