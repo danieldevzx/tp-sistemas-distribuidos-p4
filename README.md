@@ -4,6 +4,20 @@ Este projeto implementa um sistema distribuído de jogo de escavação competiti
 
 ---
 
+## 🎮 Como Jogar (Regras do Jogo)
+
+O sistema conta com um fluxo competitivo inspirado no clássico **Campo Minado**:
+
+1. **Equipes Dinâmicas:** Ao realizar login, os jogadores são automaticamente e aleatoriamente distribuídos entre o **Time 1 (Montagem)** e o **Time 2 (Escavação)**, garantindo balanceamento (1 e 2, 1 e 2...).
+2. **Fase 1 - Montagem:** O Time 1 tem 60 segundos para esconder até **10 tesouros** no tabuleiro. O Time 2 apenas assiste.
+3. **Fase 2 - Escavação:** O Time 2 tem **20 tentativas** para encontrar todos os tesouros escondidos. Ao escavar uma célula vazia, ela revela o **número de tesouros adjacentes (0 a 8)**.
+4. **Condições de Vitória e Reinício:**
+   - O Time 2 vence se achar todos os tesouros antes de acabarem suas tentativas.
+   - O Time 1 vence caso as tentativas acabem ou o tempo do Time 2 se esgote.
+   - Ao fim da partida, um botão **Reiniciar** é habilitado no cabeçalho. Ao ser clicado, limpa o tabuleiro e re-sorteia os times de todos os conectados, promovendo grande rejogabilidade!
+
+---
+
 ## 🏗️ Arquitetura do Sistema
 
 O projeto utiliza uma arquitetura baseada em RMI (Invocação de Método Remoto) para comunicação de rede, garantindo que o cliente e o servidor se comuniquem por meio de objetos distribuídos em vez de sockets de baixo nível.
