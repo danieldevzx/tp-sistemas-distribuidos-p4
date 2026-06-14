@@ -145,6 +145,24 @@ class ControladorCliente(QObject):
                 )
 
         self.solicitar_campo()
+        self._mostrar_instrucoes()
+
+    def _mostrar_instrucoes(self):
+        instrucoes = (
+            "Bem-vindo ao Jogo da Bomba (Campo Minado Cooperativo)!\n\n"
+            "Como o jogo funciona:\n"
+            "1. Times: Você será atribuído aleatoriamente ao Time 1 (Montagem) ou ao Time 2 (Escavação).\n\n"
+            "2. Fase de Montagem (Time 1):\n"
+            "   - O Time 1 tem 60 segundos para colocar até 10 estruturas (tesouros) no campo.\n"
+            "   - Clique nas células para adicionar/remover estruturas.\n\n"
+            "3. Fase de Escavação (Time 2):\n"
+            "   - O Time 2 tem 20 tentativas para escavar e encontrar todos os tesouros.\n"
+            "   - Células vazias reveladas exibem um número (0 a 8) indicando a quantidade de tesouros adjacentes (estilo Campo Minado).\n\n"
+            "4. Condições de Vitória:\n"
+            "   - Time 2 Vence: se encontrar todos os tesouros do campo antes de esgotar as tentativas.\n"
+            "   - Time 1 Vence: se as tentativas do Time 2 acabarem, ou se o tempo de escavação expirar."
+        )
+        QMessageBox.information(self.janela, "Instruções do Jogo", instrucoes)
 
     def _ao_registro_sucesso(self, resultado):
         self._definir_carregamento(False)
