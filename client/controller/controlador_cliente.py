@@ -23,7 +23,6 @@ class ControladorCliente(QObject):
         self.proxy = ProxyServidor()
         self.estado = EstadoJogo()
 
-        # Callback Pyro para broadcasts
         self._sinais_callback = SinaisCallback()
         self._daemon_callback = DaemonCallback(self._sinais_callback)
 
@@ -59,9 +58,6 @@ class ControladorCliente(QObject):
         self._sinais_callback.sinal_field_update.connect(self._tratar_campo_parcial)
         self._sinais_callback.sinal_phase_change.connect(self._tratar_mudanca_fase)
         self._sinais_callback.sinal_team_assigned.connect(self._tratar_novo_time)
-
-
-    # --- Ações do usuário ---
 
     def processar_login(self, usuario: str, senha: str):
         if not usuario or not senha:
@@ -111,8 +107,6 @@ class ControladorCliente(QObject):
             callback_sucesso=self._ao_campo_recebido,
         )
 
-    # --- Handlers de resposta ---
-
     def _ao_login_sucesso(self, resultado):
         self._definir_carregamento(False)
         sucesso, dados = resultado
@@ -124,14 +118,12 @@ class ControladorCliente(QObject):
         self.estado.definir_jogador(dados)
         self.estado.conectado = True
 
-        # Iniciar callback do cliente (com IP real)
         callback_host = os.environ.get("CALLBACK_HOST", "0.0.0.0")
         callback_nathost = socket.gethostbyname(socket.gethostname())
         callback_uri = self._daemon_callback.iniciar(
             host=callback_host, nathost=callback_nathost
         )
 
-        # Registrar callback e reivindicar ownership do proxy
         self.proxy.transferir_ownership()
         self.proxy.jogo.registrar_callback(callback_uri, self.estado.jogador_local.timeId)
 
@@ -191,8 +183,6 @@ class ControladorCliente(QObject):
         sucesso, mensagem = resultado
         if not sucesso:
             QMessageBox.warning(self.janela, "Erro", mensagem)
-
-    # --- Handlers de callback (broadcasts do servidor) ---
 
     def _tratar_tick_tempo(self, tempo_restante: int):
         self.estado.tempo_restante = tempo_restante
@@ -283,10 +273,6 @@ class ControladorCliente(QObject):
                     time_id
                 )
 
-
-
-    # --- Lifecycle ---
-
     def desconectar(self):
         """Encerra sessão do cliente."""
         self.proxy.transferir_ownership()
@@ -301,7 +287,6 @@ class ControladorCliente(QObject):
         self.proxy.desconectar()
         self.estado.resetar()
 
-    # --- Utilitários ---
 
     def _iniciar_requisicao(self, funcao, *args, callback_sucesso=None):
         """Executa chamada RMI em background."""

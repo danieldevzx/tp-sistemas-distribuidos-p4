@@ -14,7 +14,6 @@ class PaginaLogin(QWidget):
         main_layout.setContentsMargins(20, 20, 20, 20)
         main_layout.setSpacing(25)
         
-        # --- COLUNA DA ESQUERDA: PAINEL DE REGRAS E INSTRUÇÕES ---
         sidebar = QFrame()
         sidebar.setStyleSheet("""
             QFrame {
@@ -66,7 +65,6 @@ class PaginaLogin(QWidget):
         lbl_regras.setStyleSheet("background-color: transparent;")
         sidebar_layout.addWidget(lbl_regras)
         
-        # --- COLUNA DA DIREITA: FORMULÁRIO DE LOGIN ---
         form_widget = QWidget()
         form_layout = QVBoxLayout(form_widget)
         form_layout.setContentsMargins(0, 0, 0, 0)

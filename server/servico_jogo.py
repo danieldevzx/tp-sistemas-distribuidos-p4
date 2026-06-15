@@ -16,8 +16,6 @@ class ServicoJogo:
         self._lock_callbacks = threading.Lock()
         self._jogo.iniciar_timer(self._ao_tick, self._ao_fim_montagem, self._ao_fim_jogo)
 
-    # --- Métodos expostos ao cliente ---
-
     def registrar_callback(self, callback_uri: str, time_id: int):
         """Registra callback do cliente."""
         with self._lock_callbacks:
@@ -119,8 +117,6 @@ class ServicoJogo:
         """Retorna info da fase."""
         return self._jogo.get_info_fase()
 
-    # --- Callbacks de timer ---
-
     def _ao_tick(self, tempo_restante: int):
         self._broadcast_tick(tempo_restante)
 
@@ -133,8 +129,6 @@ class ServicoJogo:
         info = self._jogo.get_info_fase()
         print(f"[JOGO] Jogo encerrado — vencedor: {info['ganhador']} — broadcast PHASE_CHANGE")
         self._broadcast_phase_change(info["fase"], info["ganhador"])
-
-    # --- Broadcasts via callbacks ---
 
     def _broadcast_tick(self, tempo_restante: int):
         self._executar_broadcast("on_tick", tempo_restante)
