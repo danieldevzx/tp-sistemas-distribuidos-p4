@@ -264,8 +264,13 @@ class ControladorCliente(QObject):
     def reiniciar_jogo(self):
         """Dispara a solicitação RMI de reiniciar o jogo no servidor."""
         self._iniciar_requisicao(
-            self.proxy.jogo.resetar_jogo
+            self.proxy.jogo.resetar_jogo,
+            callback_sucesso=self._ao_reiniciar_sucesso,
         )
+
+    def _ao_reiniciar_sucesso(self, resultado):
+        """Atualiza a interface com o estado completo após o reset remoto."""
+        self.solicitar_campo()
 
     def _tratar_novo_time(self, time_id: int):
         """Trata reatribuição de time recebida via callback."""

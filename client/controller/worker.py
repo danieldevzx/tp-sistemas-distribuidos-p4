@@ -16,8 +16,9 @@ class WorkerRMI(QThread):
 
     def run(self):
         try:
-            self._proxy.transferir_ownership()
-            resultado = self._funcao(*self._args)
+            with self._proxy.lock_chamada:
+                self._proxy.transferir_ownership()
+                resultado = self._funcao(*self._args)
             self.sinal_resultado.emit(resultado)
         except Exception as e:
             self.sinal_erro.emit(f"Erro na requisição: {e}")

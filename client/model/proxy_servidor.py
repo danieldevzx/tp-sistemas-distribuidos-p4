@@ -1,4 +1,5 @@
 import os
+import threading
 import Pyro5.api
 
 
@@ -9,6 +10,7 @@ class ProxyServidor:
         self._ns_host = os.environ.get("NS_HOST", "localhost")
         self._proxy_usuario = None
         self._proxy_jogo = None
+        self._lock_chamada = threading.RLock()
 
     def conectar(self) -> bool:
         """Localiza os serviços no Name Server."""
@@ -51,3 +53,7 @@ class ProxyServidor:
             self._proxy_usuario._pyroClaimOwnership()
         if self._proxy_jogo:
             self._proxy_jogo._pyroClaimOwnership()
+
+    @property
+    def lock_chamada(self):
+        return self._lock_chamada
