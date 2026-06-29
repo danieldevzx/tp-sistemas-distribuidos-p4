@@ -119,9 +119,14 @@ class ControladorCliente(QObject):
         self.estado.conectado = True
 
         callback_host = os.environ.get("CALLBACK_HOST", "0.0.0.0")
-        callback_nathost = socket.gethostbyname(socket.gethostname())
+        callback_port = int(os.environ.get("CALLBACK_PORT", "9092"))
+        callback_nathost = (
+            os.environ.get("CALLBACK_NATHOST")
+            or os.environ.get("CALLBACK_HOST")
+            or socket.gethostbyname(socket.gethostname())
+        )
         callback_uri = self._daemon_callback.iniciar(
-            host=callback_host, nathost=callback_nathost
+            host=callback_host, nathost=callback_nathost, port=callback_port
         )
 
         self.proxy.transferir_ownership()

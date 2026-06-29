@@ -3,9 +3,9 @@ services:
     image: python:3.10-slim
     command: >
       bash -c "pip install --no-cache-dir Pyro5 &&
-               python -m Pyro5.nameserver --host 0.0.0.0"
+               python -m Pyro5.nameserver --host 0.0.0.0 --port ${NS_PORT:-9090}"
     ports:
-      - "9090:9090"
+      - "${NS_PORT:-9090}:9090"
 
   server:
     init: true
@@ -16,10 +16,14 @@ services:
     command: watchmedo auto-restart --recursive --pattern="*.py" --directory="." python main.py
     environment:
       - DB_PATH=/app/data/sistema.db
-      - NS_HOST=nameserver
+      - NS_HOST=${NS_HOST:-nameserver}
+      - NS_PORT=${NS_PORT:-9090}
       - SERVER_HOST=0.0.0.0
-      - SERVER_NATHOST=server
+      - SERVER_PORT=${SERVER_PORT:-9091}
+      - SERVER_NATHOST=${SERVER_NATHOST:-localhost}
       - PYTHONUNBUFFERED=1
+    ports:
+      - "${SERVER_PORT:-9091}:9091"
     depends_on:
       - nameserver
       - db-init
@@ -36,14 +40,19 @@ services:
     security_opt:
       - label:disable
     environment:
-      - NS_HOST=nameserver
+      - NS_HOST=${NS_HOST:-nameserver}
+      - NS_PORT=${NS_PORT:-9090}
       - CALLBACK_HOST=0.0.0.0
+      - CALLBACK_PORT=${CALLBACK_PORT:-9092}
+      - CALLBACK_NATHOST=${CALLBACK_NATHOST:-localhost}
       - PYTHONUNBUFFERED=1
       - DISPLAY=${DISPLAY:-:0}
       - WAYLAND_DISPLAY=${WAYLAND_DISPLAY:-wayland-0}
       - XDG_RUNTIME_DIR=${XDG_RUNTIME_DIR:-/run/user/1000}
       - QT_QPA_PLATFORM=wayland;xcb
       - QT_X11_NO_MITSHM=1
+    ports:
+      - "${CALLBACK_PORT:-9092}:${CALLBACK_PORT:-9092}"
     volumes:
       - ./client:/app:z
       - /tmp/.X11-unix:/tmp/.X11-unix:rw

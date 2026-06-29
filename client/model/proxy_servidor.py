@@ -8,6 +8,7 @@ class ProxyServidor:
 
     def __init__(self):
         self._ns_host = os.environ.get("NS_HOST", "localhost")
+        self._ns_port = int(os.environ.get("NS_PORT", "9090"))
         self._proxy_usuario = None
         self._proxy_jogo = None
         self._lock_chamada = threading.RLock()
@@ -15,7 +16,7 @@ class ProxyServidor:
     def conectar(self) -> bool:
         """Localiza os serviços no Name Server."""
         try:
-            ns = Pyro5.api.locate_ns(host=self._ns_host)
+            ns = Pyro5.api.locate_ns(host=self._ns_host, port=self._ns_port)
             uri_usuario = ns.lookup("servidor.usuario")
             uri_jogo = ns.lookup("servidor.jogo")
             self._proxy_usuario = Pyro5.api.Proxy(uri_usuario)

@@ -42,12 +42,12 @@ class DaemonCallback:
         self._uri = None
         self._thread = None
 
-    def iniciar(self, host: str = "0.0.0.0", nathost: str | None = None) -> str:
+    def iniciar(self, host: str = "0.0.0.0", nathost: str | None = None, port: int = 9092) -> str:
         """Inicia o daemon local."""
         if nathost:
-            self._daemon = Pyro5.server.Daemon(host=host, nathost=nathost)
+            self._daemon = Pyro5.server.Daemon(host=host, port=port, nathost=nathost)
         else:
-            self._daemon = Pyro5.server.Daemon(host=host)
+            self._daemon = Pyro5.server.Daemon(host=host, port=port)
         callback = CallbackCliente(self._sinais)
         self._uri = self._daemon.register(callback)
 

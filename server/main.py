@@ -6,28 +6,30 @@ from servico_usuario import ServicoUsuario
 from servico_jogo import ServicoJogo
 
 
-def aguardar_nameserver(host: str, tentativas: int = 10, intervalo: int = 2):
+def aguardar_nameserver(host: str, port: int, tentativas: int = 10, intervalo: int = 2):
     """Aguarda a disponibilidade do Name Server."""
     for i in range(tentativas):
         try:
-            ns = Pyro5.api.locate_ns(host=host)
-            print(f"[MAIN] Name Server encontrado em {host}")
+            ns = Pyro5.api.locate_ns(host=host, port=port)
+            print(f"[MAIN] Name Server encontrado em {host}:{port}")
             return ns
         except Exception:
             print(f"[MAIN] Aguardando Name Server ({i + 1}/{tentativas})...")
             time.sleep(intervalo)
-    raise RuntimeError(f"Name Server não encontrado em {host} após {tentativas} tentativas")
+    raise RuntimeError(f"Name Server não encontrado em {host}:{port} após {tentativas} tentativas")
 
 
 def principal():
     """Inicializa o servidor e registra os serviços no Name Server."""
     ns_host = os.environ.get("NS_HOST", "localhost")
+    ns_port = int(os.environ.get("NS_PORT", "9090"))
     server_host = os.environ.get("SERVER_HOST", "0.0.0.0")
+    server_port = int(os.environ.get("SERVER_PORT", "9091"))
     server_nathost = os.environ.get("SERVER_NATHOST", "localhost")
 
-    ns = aguardar_nameserver(ns_host)
+    ns = aguardar_nameserver(ns_host, ns_port)
 
-    daemon = Pyro5.server.Daemon(host=server_host, nathost=server_nathost)
+    daemon = Pyro5.server.Daemon(host=server_host, port=server_port, nathost=server_nathost)
 
     servico_usuario = ServicoUsuario()
     uri_usuario = daemon.register(servico_usuario)
