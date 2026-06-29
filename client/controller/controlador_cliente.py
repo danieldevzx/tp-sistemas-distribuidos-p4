@@ -122,7 +122,7 @@ class ControladorCliente(QObject):
         callback_port = int(os.environ.get("CALLBACK_PORT", "9092"))
         callback_nathost = (
             os.environ.get("CALLBACK_NATHOST")
-            or os.environ.get("CALLBACK_HOST")
+            or socket.gethostname()
             or socket.gethostbyname(socket.gethostname())
         )
         callback_uri = self._daemon_callback.iniciar(

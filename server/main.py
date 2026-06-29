@@ -25,7 +25,7 @@ def principal():
     ns_port = int(os.environ.get("NS_PORT", "9090"))
     server_host = os.environ.get("SERVER_HOST", "0.0.0.0")
     server_port = int(os.environ.get("SERVER_PORT", "9091"))
-    server_nathost = os.environ.get("SERVER_NATHOST", "localhost")
+    server_nathost = os.environ.get("SERVER_NATHOST", "server")
 
     ns = aguardar_nameserver(ns_host, ns_port)
 
