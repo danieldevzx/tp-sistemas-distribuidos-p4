@@ -1,9 +1,39 @@
 import os
+import socket
 import time
 import Pyro5.api
 import Pyro5.server
 from servico_usuario import ServicoUsuario
 from servico_jogo import ServicoJogo
+
+
+def _eh_nathost_valido(valor: str | None) -> bool:
+    if not valor:
+        return False
+    return valor not in {"server", "localhost", "0.0.0.0", "127.0.0.1", "::1"}
+
+
+def resolver_nathost() -> str | None:
+    """Resolve um host utilizável para a URI Pyro publicada no Name Server."""
+    for valor in (os.environ.get("HOST_IP"), os.environ.get("SERVER_NATHOST")):
+        if _eh_nathost_valido(valor):
+            return valor
+
+    try:
+        host = socket.gethostbyname(socket.gethostname())
+        if _eh_nathost_valido(host):
+            return host
+    except Exception:
+        pass
+
+    try:
+        host = socket.gethostname()
+        if _eh_nathost_valido(host):
+            return host
+    except Exception:
+        pass
+
+    return None
 
 
 def aguardar_nameserver(host: str, port: int, tentativas: int = 10, intervalo: int = 2):
@@ -25,11 +55,12 @@ def principal():
     ns_port = int(os.environ.get("NS_PORT", "9090"))
     server_host = os.environ.get("SERVER_HOST", "0.0.0.0")
     server_port = int(os.environ.get("SERVER_PORT", "9091"))
-    server_nathost = os.environ.get("SERVER_NATHOST", "server")
+    server_nathost = resolver_nathost()
 
     ns = aguardar_nameserver(ns_host, ns_port)
 
     daemon = Pyro5.server.Daemon(host=server_host, port=server_port, nathost=server_nathost)
+    print(f"[MAIN] Registrando URIs Pyro com nathost={server_nathost or 'auto'}")
 
     servico_usuario = ServicoUsuario()
     uri_usuario = daemon.register(servico_usuario)
